@@ -4,35 +4,27 @@ import XCTest
 
 @testable import Goldfish
 
-final class ClipboardMonitorServiceTests: ClipboardTestCase {
-  private var settings: SettingsModel!
-  private var store: ClipboardStore!
-  private var cacheService: ClipboardCacheService!
+final class ClipboardMonitorServiceTests: StoredClipboardTestCase {
   private var monitor: ClipboardMonitorService!
-  private var baseURL: URL!
-
-  override func setUpWithError() throws { try resetFixture() }
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    makeMonitor()
+  }
 
   private func resetFixture() throws {
     monitor?.stop()
-    store?.flushPersistenceForTesting()
-    cacheService?.flushForTesting()
-    settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
-    baseURL = try makeTempDirectory()
-    cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption())
-    store = ClipboardStore(settings: settings, cacheService: cacheService, baseURL: baseURL, encryptionService: testEncryption())
+    try resetStorage()
+    makeMonitor()
+  }
+
+  private func makeMonitor() {
     monitor = ClipboardMonitorService(
-      pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
+      pasteboard: pasteboard, store: store, cacheService: cache, settings: settings, frontmostApp: { (nil, nil) })
   }
 
   override func tearDownWithError() throws {
     monitor.stop()
-    store.flushPersistenceForTesting()
-    cacheService.flushForTesting()
     monitor = nil
-    store = nil
-    cacheService = nil
-    settings = nil
     try super.tearDownWithError()
   }
 
@@ -132,8 +124,11 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
       let item = try XCTUnwrap(store.items.first(where: { $0.kind == kind }))
       XCTAssertTrue(FileManager.default.fileExists(atPath: item.payload))
       if kind == .video { XCTAssertEqual(item.displayText, VideoPayload.displayTitle(byteCount: data.count)) }
-      XCTAssertEqual(cacheService.data(for: item.payload), data)
-      XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cacheService).copy(item), .copied)
+      XCTAssertEqual(cache.data(for: item.payload), data)
+      XCTAssertEqual(
+        (PasteActionService(pasteboard: pasteboard, cacheService: cache).pasteboardWriters(for: item).first as? NSPasteboardItem)?.types
+          .first, type)
+      XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cache).copy(item), .copied)
       XCTAssertEqual(pasteboard.data(forType: type), data)
     }
   }
@@ -154,7 +149,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
     let item = try XCTUnwrap(store.items.first(where: { $0.kind == .color }))
     XCTAssertEqual(item.displayText, "#0A84FF")
     XCTAssertEqual(item.payload, "#0A84FF")
-    XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cacheService).copy(item), .copied)
+    XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cache).copy(item), .copied)
     let restored = try XCTUnwrap(NSColor(from: pasteboard))
     XCTAssertEqual(ColorPayload.hexString(from: restored), "#0A84FF")
     XCTAssertEqual(pasteboard.string(forType: .string), "#0A84FF")
@@ -179,7 +174,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
     XCTAssertEqual(item.kind, .file)
     XCTAssertEqual(item.displayText, "2 files")
     XCTAssertEqual(item.payload, payload)
-    XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cacheService).copy(item), .copied)
+    XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cache).copy(item), .copied)
     let objects = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
     XCTAssertEqual(objects?.map(\.standardizedFileURL), [firstURL.standardizedFileURL, secondURL.standardizedFileURL])
   }
@@ -261,7 +256,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   func testPollNowCapturesImageWithRecognizedTextWhenSearchIsEnabled() throws {
     settings.includeImageTextInSearch = true
     monitor = ClipboardMonitorService(
-      pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) },
+      pasteboard: pasteboard, store: store, cacheService: cache, settings: settings, frontmostApp: { (nil, nil) },
       imageTextExtractor: { _ in "  Receipt total $42\nOrder 1001  " })
     let image = testImage(color: .systemOrange)
     let captured = expectation(description: "image with recognized text captured")
@@ -303,8 +298,8 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
     let item = try XCTUnwrap(store.items.first)
     XCTAssertEqual(item.displayText, text)
     XCTAssertTrue(FileManager.default.fileExists(atPath: item.payload))
-    XCTAssertEqual(cacheService.data(for: item.payload), rtfData)
-    XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cacheService).copy(item), .copied)
+    XCTAssertEqual(cache.data(for: item.payload), rtfData)
+    XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cache).copy(item), .copied)
     XCTAssertEqual(pasteboard.data(forType: .rtf), rtfData)
     XCTAssertEqual(pasteboard.string(forType: .string), text)
   }
@@ -331,9 +326,9 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
     XCTAssertEqual(item.kind, .richText)
     XCTAssertEqual(item.displayText, text)
     XCTAssertTrue(FileManager.default.fileExists(atPath: item.payload))
-    let cachedRTF = try XCTUnwrap(cacheService.data(for: item.payload))
+    let cachedRTF = try XCTUnwrap(cache.data(for: item.payload))
     XCTAssertNotNil(NSAttributedString(rtf: cachedRTF, documentAttributes: nil))
-    XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cacheService).copy(item), .copied)
+    XCTAssertEqual(PasteActionService(pasteboard: pasteboard, cacheService: cache).copy(item), .copied)
     XCTAssertNotNil(pasteboard.data(forType: .rtf))
     XCTAssertEqual(pasteboard.string(forType: .string), text)
   }
@@ -348,10 +343,10 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
 
     monitor.pollNowAndWait()
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-    cacheService.flushForTesting()
+    cache.flushForTesting()
 
     XCTAssertTrue(store.items.isEmpty)
-    XCTAssertTrue(try imageCacheFileURLs(in: baseURL).isEmpty)
+    XCTAssertTrue(try imageCacheFileURLs(in: directory).isEmpty)
   }
 
   func testIgnoredRichTextKindDoesNotWriteHTMLAttachmentFiles() throws {
@@ -366,10 +361,10 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
 
     monitor.pollNowAndWait()
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-    cacheService.flushForTesting()
+    cache.flushForTesting()
 
     XCTAssertTrue(store.items.isEmpty)
-    XCTAssertTrue(try attachmentFileURLs(in: baseURL).isEmpty)
+    XCTAssertTrue(try attachmentFileURLs(in: directory).isEmpty)
     XCTAssertEqual(settings.captureStatusMessage, "Skipped: Rich Text items are ignored in capture settings.")
   }
 
@@ -385,9 +380,9 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
       XCTAssertTrue(pasteboard.setString("Do not persist this fallback", forType: .string))
       monitor.pollNowAndWait()
       RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-      cacheService.flushForTesting()
+      cache.flushForTesting()
       XCTAssertTrue(store.items.isEmpty, "\(kind) must stop capture before plaintext fallback")
-      XCTAssertTrue(try attachmentFileURLs(in: baseURL).isEmpty, "\(kind) must not write attachments")
+      XCTAssertTrue(try attachmentFileURLs(in: directory).isEmpty, "\(kind) must not write attachments")
       XCTAssertTrue(settings.captureStatusMessage.contains("items are ignored"), "\(kind)")
     }
   }

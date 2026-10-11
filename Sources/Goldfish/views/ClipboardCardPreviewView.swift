@@ -4,7 +4,7 @@ import AppKit
 /// creating hundreds of text controls or extra keyboard stops in the history.
 final class ClipboardCardPreviewView: NSView {
   private let item: ClipboardItem
-  private let thumbnail: NSImage?
+  var thumbnail: NSImage? { didSet { needsDisplay = true } }
   private let cardLayout: ClipboardItemCardLayout
   private let formatter = ClipboardItemCardContentFormatter()
   private let sourceIcon: NSImage?

@@ -4,33 +4,7 @@ import XCTest
 
 @testable import Goldfish
 
-final class PersistenceSafetyTests: XCTestCase {
-  private var root: URL!
-  private var defaults: UserDefaults!
-  private var suite: String!
-  private var settings: SettingsModel!
-  private var cache: ClipboardCacheService!
-  private var store: ClipboardStore!
-  private let encryption = ClipboardEncryptionService(keyProvider: { nil })
-
-  override func setUpWithError() throws {
-    suite = "Goldfish.Safety.\(UUID())"
-    root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-    defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-    settings = SettingsModel(defaults: defaults)
-    settings.historyRetention = .forever
-    cache = ClipboardCacheService(baseURL: root, encryptionService: encryption)
-    store = reopen()
-  }
-
-  override func tearDownWithError() throws {
-    cache.flushForTesting()
-    store = nil
-    cache = nil
-    defaults.removePersistentDomain(forName: suite)
-    try FileManager.default.removeItem(at: root)
-  }
-
+final class PersistenceSafetyTests: StoredClipboardTestCase {
   func testFailedMutationsPreserveMemoryDatabaseAndAttachments() throws {
     let note = item("original")
     let path = try XCTUnwrap(cache.cachePDF(Data("attachment".utf8), id: UUID()))
@@ -55,7 +29,7 @@ final class PersistenceSafetyTests: XCTestCase {
     XCTAssertNil(store.persistenceWarningMessage)
     XCTAssertEqual(reopen().items.first { $0.id == note.id }?.payload, "retry")
     var locked: OpaquePointer?
-    XCTAssertEqual(sqlite3_open(root.appendingPathComponent("history.sqlite").path, &locked), SQLITE_OK)
+    XCTAssertEqual(sqlite3_open(directory.appendingPathComponent("history.sqlite").path, &locked), SQLITE_OK)
     defer { sqlite3_close(locked) }
     XCTAssertEqual(sqlite3_exec(locked, "BEGIN IMMEDIATE;", nil, nil, nil), SQLITE_OK)
     XCTAssertFalse(store.updateText(note.id, text: "blocked"))
@@ -68,7 +42,7 @@ final class PersistenceSafetyTests: XCTestCase {
     let path = try XCTUnwrap(cache.cacheImageSidecarData(Data("original".utf8), id: UUID()))
     let image = item(path, kind: .image, imagePath: path)
     store.upsert(image)
-    let archive = root.appendingPathComponent("test.clipboredarchive")
+    let archive = directory.appendingPathComponent("test.clipboredarchive")
     try store.exportArchive(to: archive)
     try editArchive(archive) { json in
       var rows = json["items"] as! [[String: Any]]
@@ -83,7 +57,7 @@ final class PersistenceSafetyTests: XCTestCase {
     XCTAssertEqual(cache.data(for: path), Data("original".utf8))
     XCTAssertEqual(store.items, [image])
     XCTAssertFalse(settings.customCollectionNames.contains("Imported board"))
-    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("images").path).count, 1)
+    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent("images").path).count, 1)
     try sql("DROP TRIGGER reject_import;")
     try store.importArchive(from: archive)
     let imported = try XCTUnwrap(store.items.first)
@@ -94,18 +68,18 @@ final class PersistenceSafetyTests: XCTestCase {
   }
 
   func testArchiveAndCacheNeverOwnExternalOrSymlinkedFiles() throws {
-    let foreign = root.appendingPathComponent("unrelated.txt")
+    let foreign = directory.appendingPathComponent("unrelated.txt")
     try Data("keep me".utf8).write(to: foreign)
-    let link = root.appendingPathComponent("images/link.png")
+    let link = directory.appendingPathComponent("images/link.png")
     try FileManager.default.createSymbolicLink(at: link, withDestinationURL: foreign)
     let owned = try XCTUnwrap(cache.cacheImageSidecarData(Data("owned".utf8), id: UUID()))
-    let outsideLink = root.appendingPathComponent("outside-link.png")
+    let outsideLink = directory.appendingPathComponent("outside-link.png")
     try FileManager.default.createSymbolicLink(at: outsideLink, withDestinationURL: URL(fileURLWithPath: owned))
     for path in [foreign.path, link.path, outsideLink.path] {
       let image = item(path, kind: .image, imagePath: path)
       XCTAssertFalse(cache.isManagedSidecar(path: path))
       cache.removeCachedReferences(image)
-      let archive = root.appendingPathComponent("unsafe.clipboredarchive")
+      let archive = directory.appendingPathComponent("unsafe.clipboredarchive")
       try ClipboardArchiveService().exportArchive(items: [image], to: archive, cacheService: cache)
       let summary = try store.importArchive(from: archive)
       XCTAssertEqual(summary.skippedItemCount, 1)
@@ -117,7 +91,7 @@ final class PersistenceSafetyTests: XCTestCase {
     XCTAssertEqual(cache.data(for: owned), Data("owned".utf8))
     let note = item("valid")
     store.upsert(note)
-    let archive = root.appendingPathComponent("invalid-count.clipboredarchive")
+    let archive = directory.appendingPathComponent("invalid-count.clipboredarchive")
     try store.exportArchive(to: archive)
     try editArchive(archive) { json in
       var rows = json["items"] as! [[String: Any]]
@@ -145,7 +119,7 @@ final class PersistenceSafetyTests: XCTestCase {
 
   func testUnavailableAndCorruptDatabaseStayReadOnly() throws {
     for corrupt in [false, true] {
-      let base = root.appendingPathComponent(UUID().uuidString)
+      let base = directory.appendingPathComponent(UUID().uuidString)
       try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
       let database = base.appendingPathComponent("history.sqlite")
       if corrupt {
@@ -162,15 +136,12 @@ final class PersistenceSafetyTests: XCTestCase {
     }
   }
 
-  private func reopen() -> ClipboardStore {
-    ClipboardStore(settings: settings, cacheService: cache, baseURL: root, encryptionService: encryption)
-  }
   private func item(_ text: String, kind: ClipboardItemKind = .text, imagePath: String? = nil) -> ClipboardItem {
     testItem(kind: kind, payload: text, createdAt: Date(), lastUsedAt: Date(), useCount: 0, imagePath: imagePath)
   }
   private func sql(_ statement: String) throws {
     var db: OpaquePointer?
-    XCTAssertEqual(sqlite3_open(root.appendingPathComponent("history.sqlite").path, &db), SQLITE_OK)
+    XCTAssertEqual(sqlite3_open(directory.appendingPathComponent("history.sqlite").path, &db), SQLITE_OK)
     defer { sqlite3_close(db) }
     XCTAssertEqual(sqlite3_exec(db, statement, nil, nil, nil), SQLITE_OK)
   }

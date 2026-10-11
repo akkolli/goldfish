@@ -14,6 +14,19 @@ final class ClipboardPanelSearchEngine {
   private static let searchLocale = Locale(identifier: "en_US_POSIX")
   private static let fallbackSourceDeviceName = ClipboardItem.localDeviceName
 
+  fileprivate enum Field: String {
+    case app, device, collection
+
+    static func named(_ key: String) -> Field? {
+      switch key {
+      case "app", "source", "from": return .app
+      case "device", "devices", "machine", "computer": return .device
+      case "collection", "folder", "list", "pinboard", "pinboards", "board", "boards": return .collection
+      default: return nil
+      }
+    }
+  }
+
   fileprivate struct StructuredFilterMatcher {
     let tokens: [String]
     let exactValue: String?
@@ -26,17 +39,14 @@ final class ClipboardPanelSearchEngine {
 
   struct Query {
     var textTokens: [String] = []
-    fileprivate var appTokenGroups: [StructuredFilterMatcher] = []
-    fileprivate var deviceTokenGroups: [StructuredFilterMatcher] = []
-    fileprivate var collectionTokenGroups: [StructuredFilterMatcher] = []
+    fileprivate var fields: [Field: [StructuredFilterMatcher]] = [:]
     fileprivate var typeKinds: Set<ClipboardItemKind> = []
     fileprivate var createdAfter: Date?
     fileprivate var createdBefore: Date?
     fileprivate var pinned: Bool?
 
     var isEmpty: Bool {
-      textTokens.isEmpty && appTokenGroups.isEmpty && deviceTokenGroups.isEmpty && collectionTokenGroups.isEmpty && typeKinds.isEmpty
-        && createdAfter == nil && createdBefore == nil && pinned == nil
+      textTokens.isEmpty && fields.isEmpty && typeKinds.isEmpty && createdAfter == nil && createdBefore == nil && pinned == nil
     }
   }
 
@@ -56,10 +66,7 @@ final class ClipboardPanelSearchEngine {
     let fingerprint: SearchDocumentFingerprint
     let text: String
     let textIncludingOCR: String
-    let sourceValues: [String]
-    let sourceText: String
-    let device: String
-    let collection: String
+    let fields: [Field: [String]]
   }
 
   private var documentsByItemID: [UUID: SearchDocument] = [:]
@@ -67,8 +74,7 @@ final class ClipboardPanelSearchEngine {
   func pruneDocuments(validIDs: Set<UUID>) { documentsByItemID = documentsByItemID.filter { validIDs.contains($0.key) } }
 
   func matches(_ item: ClipboardItem, query: Query, includeImageText: Bool) -> Bool {
-    let needsSearchDocument =
-      !query.textTokens.isEmpty || !query.appTokenGroups.isEmpty || !query.deviceTokenGroups.isEmpty || !query.collectionTokenGroups.isEmpty
+    let needsSearchDocument = !query.textTokens.isEmpty || !query.fields.isEmpty
     let document = needsSearchDocument ? searchDocument(for: item) : nil
 
     if !query.textTokens.isEmpty {
@@ -77,19 +83,8 @@ final class ClipboardPanelSearchEngine {
       guard query.textTokens.allSatisfy({ text.contains($0) }) else { return false }
     }
 
-    if !query.appTokenGroups.isEmpty {
-      guard let document, !document.sourceValues.isEmpty,
-        matches(query.appTokenGroups, exactValues: document.sourceValues, text: document.sourceText)
-      else { return false }
-    }
-
-    if !query.deviceTokenGroups.isEmpty {
-      guard let document, matches(query.deviceTokenGroups, exactValues: [document.device], text: document.device) else { return false }
-    }
-
-    if !query.collectionTokenGroups.isEmpty {
-      guard let document, !document.collection.isEmpty,
-        matches(query.collectionTokenGroups, exactValues: [document.collection], text: document.collection)
+    for (field, groups) in query.fields {
+      guard let values = document?.fields[field], !values.isEmpty, matches(groups, exactValues: values, text: values.joined(separator: " "))
       else { return false }
     }
 
@@ -124,9 +119,11 @@ final class ClipboardPanelSearchEngine {
     let textIncludingOCR = normalizedOCR.isEmpty ? text : "\(text) \(normalizedOCR)"
     let sourceValues = [item.sourceApp, item.sourceAppBundleId].compactMap { $0 }.map(normalizedStructuredValue).filter { !$0.isEmpty }
     let document = SearchDocument(
-      fingerprint: fingerprint, text: text, textIncludingOCR: textIncludingOCR, sourceValues: sourceValues,
-      sourceText: sourceValues.joined(separator: " "), device: normalizedStructuredValue(sourceDeviceName),
-      collection: item.collectionName.map(normalizedStructuredValue) ?? "")
+      fingerprint: fingerprint, text: text, textIncludingOCR: textIncludingOCR,
+      fields: [
+        .app: sourceValues, .device: [normalizedStructuredValue(sourceDeviceName)],
+        .collection: item.collectionName.map(normalizedStructuredValue).flatMap { $0.isEmpty ? nil : [$0] } ?? [],
+      ])
     documentsByItemID[item.id] = document
     return document
   }
@@ -155,22 +152,13 @@ final class ClipboardPanelSearchEngine {
   }
 
   @discardableResult private func applyStructuredSearchToken(key: String, value: String, to query: inout Query) -> Bool {
+    if let field = Field.named(key) {
+      let groups = structuredTokenGroups(from: value)
+      guard !groups.isEmpty else { return false }
+      query.fields[field, default: []].append(contentsOf: groups)
+      return true
+    }
     switch key {
-    case "app", "source", "from":
-      let groups = structuredTokenGroups(from: value)
-      guard !groups.isEmpty else { return false }
-      query.appTokenGroups.append(contentsOf: groups)
-      return true
-    case "device", "devices", "machine", "computer":
-      let groups = structuredTokenGroups(from: value)
-      guard !groups.isEmpty else { return false }
-      query.deviceTokenGroups.append(contentsOf: groups)
-      return true
-    case "collection", "folder", "list", "pinboard", "pinboards", "board", "boards":
-      let groups = structuredTokenGroups(from: value)
-      guard !groups.isEmpty else { return false }
-      query.collectionTokenGroups.append(contentsOf: groups)
-      return true
     case "type", "kind":
       var matchedKinds = Set<ClipboardItemKind>()
       for segment in structuredValueSegments(from: value) {

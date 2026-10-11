@@ -4,33 +4,18 @@ import XCTest
 
 @testable import Goldfish
 
-final class ClipboardShelfInteractionTests: ClipboardTestCase {
-  private var directory: URL!
-  private var defaults: UserDefaults!
-  private var settings: SettingsModel!
-  private var cache: ClipboardCacheService!
-  private var store: ClipboardStore!
+final class ClipboardShelfInteractionTests: StoredClipboardTestCase {
   private var model: ClipboardPanelViewModel!
-
+  override var encryptionByte: UInt8? { 57 }
   override func setUpWithError() throws {
     _ = NSApplication.shared
-    defaults = makeTestDefaults()
-    directory = try makeTempDirectory()
-    settings = SettingsModel(defaults: defaults)
+    try super.setUpWithError()
     settings.shelfLayout = .sidebar
-    settings.historyRetention = .forever
-    let encryption = testEncryption(byte: 57)
-    cache = ClipboardCacheService(baseURL: directory, encryptionService: encryption)
-    store = ClipboardStore(settings: settings, cacheService: cache, baseURL: directory, encryptionService: encryption)
     model = ClipboardPanelViewModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
   }
 
   override func tearDownWithError() throws {
     model = nil
-    store.flushPersistenceForTesting()
-    cache.flushForTesting()
-    store = nil
-    cache = nil
     try super.tearDownWithError()
   }
 
@@ -258,7 +243,8 @@ final class ClipboardShelfInteractionTests: ClipboardTestCase {
     store.upsert(item("A text clip", kind: .text))
     settle()
     let before = Set(NSApp.windows.map(ObjectIdentifier.init))
-    let controller = ClipboardPanelController(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
+    let controller = ClipboardPanelController(
+      pasteboard: pasteboard, store: store, settings: settings, cacheService: cache, preferredScreen: { self.interfaceScreen })
     let parent = try XCTUnwrap(NSApp.windows.first { !before.contains(ObjectIdentifier($0)) && $0 is NSPanel })
     let panel = try XCTUnwrap(parent.contentView as? ClipboardPanelView)
     defer {
@@ -384,7 +370,8 @@ final class ClipboardShelfInteractionTests: ClipboardTestCase {
 
   private func controllerFixture() throws -> (ClipboardPanelController, NSWindow) {
     let existing = Set(NSApp.windows.map(ObjectIdentifier.init))
-    let controller = ClipboardPanelController(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
+    let controller = ClipboardPanelController(
+      pasteboard: pasteboard, store: store, settings: settings, cacheService: cache, preferredScreen: { self.interfaceScreen })
     let window = try XCTUnwrap(NSApp.windows.first { !existing.contains(ObjectIdentifier($0)) && $0 is NSPanel })
     return (controller, window)
   }
@@ -402,6 +389,7 @@ final class ClipboardShelfInteractionTests: ClipboardTestCase {
       contentRect: NSRect(x: 100, y: 100, width: 420, height: 760), styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     window.contentView = panel
+    positionInterfaceWindow(window)
     window.makeKeyAndOrderFront(nil)
     panel.layoutSubtreeIfNeeded()
     settle()
@@ -410,10 +398,9 @@ final class ClipboardShelfInteractionTests: ClipboardTestCase {
   private func item(_ text: String, kind: ClipboardItemKind, collection: String? = nil) -> ClipboardItem {
     let now = Date()
     return testItem(
-      kind: kind, payload: text, payloadHash: UUID().uuidString, createdAt: now, useCount: 0,
-      sourceApp: "Design \"Notes\"", collectionName: collection)
+      kind: kind, payload: text, payloadHash: UUID().uuidString, createdAt: now, useCount: 0, sourceApp: "Design \"Notes\"",
+      collectionName: collection)
   }
-  private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
   private func button(_ label: String, in view: NSView) throws -> ShelfFilterButton {
     try XCTUnwrap(descendants(view).compactMap { $0 as? ShelfFilterButton }.first { $0.accessibilityLabel() == label })
   }
@@ -430,5 +417,5 @@ final class ClipboardShelfInteractionTests: ClipboardTestCase {
         windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
         keyCode: code))
   }
-  private func settle(_ seconds: TimeInterval = 0.1) { RunLoop.main.run(until: Date().addingTimeInterval(seconds)) }
+  override func settle(_ seconds: TimeInterval = 0.1) { super.settle(seconds) }
 }

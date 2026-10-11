@@ -464,20 +464,9 @@ final class ClipboardPanelView: NSView {
 
   private func iconButton(_ systemName: String, toolTip: String, accessibilityHelp: String, action: Selector) -> NSButton {
     let button = ClipboardToolbarIconButton(title: "", target: self, action: action)
-    let image = NSImage(systemSymbolName: systemName, accessibilityDescription: toolTip)
-    image?.isTemplate = true
-    button.image = image
-    button.imagePosition = .imageOnly
-    button.imageScaling = .scaleProportionallyDown
-    button.bezelStyle = .smallSquare
-    button.isBordered = false
-    button.configureAppearance(size: Metrics.actionButtonSize)
-    button.toolTip = toolTip
-    button.setAccessibilityLabel(toolTip)
+    button.configureIcon(systemName, label: toolTip, size: Metrics.actionButtonSize, bezel: .smallSquare, template: true)
     button.setAccessibilityHelp(accessibilityHelp)
     button.translatesAutoresizingMaskIntoConstraints = false
-    button.widthAnchor.constraint(equalToConstant: Metrics.actionButtonSize).isActive = true
-    button.heightAnchor.constraint(equalToConstant: Metrics.actionButtonSize).isActive = true
     toolbarButtons.append(button)
     return button
   }
@@ -623,46 +612,31 @@ final class ClipboardPanelView: NSView {
       guard cardSlots[index]?.card == nil else { continue }
 
       let item = context.items[index]
-      let card = makeCard(item: item, thumbnail: nil, index: index, context: context)
+      let card = makeCard(item: item, index: index, context: context)
       let slot = cardSlot(at: index, itemID: item.id, layout: context.layout)
       slot.attachCard(card)
       configureCardCallbacks(card, slot: slot)
       applyCurrentCardState(card, index: index)
-      if !card.hasThumbnail { loadThumbnail(for: item, at: index, reloadGeneration: reloadGeneration) }
+      if !card.hasThumbnail {
+        viewModel.loadThumbnail(for: item) { [weak slot, weak card] thumbnail in
+          guard let slot, let card, slot.card === card, let thumbnail else { return }
+          card.updateThumbnail(thumbnail)
+        }
+      }
     }
 
     cardViews = renderedCardsInItemOrder()
   }
 
-  private func makeCard(item: ClipboardItem, thumbnail: NSImage?, index: Int, context: CardRenderContext) -> ClipboardItemCardView {
+  private func makeCard(item: ClipboardItem, index: Int, context: CardRenderContext) -> ClipboardItemCardView {
     let layout = contentLayout(at: index, base: context.layout)
     let configuration = ClipboardCardConfiguration(
       item: item, layout: layout, collectionNames: context.collectionNames, canShowInClipboard: context.canShowInClipboard)
-    if thumbnail == nil, let reused = reusableCards.removeValue(forKey: item.id), reused.canReuse(with: configuration) {
+    if let reused = reusableCards.removeValue(forKey: item.id), reused.canReuse(with: configuration) {
       reused.updateIndex(index)
       return reused
     }
-    return ClipboardItemCardView(configuration: configuration, thumbnail: thumbnail, index: index)
-  }
-
-  private func loadThumbnail(for item: ClipboardItem, at index: Int, reloadGeneration: Int) {
-    viewModel.loadThumbnail(for: item) { [weak self] thumbnail in
-      guard let self, let thumbnail else { return }
-      guard self.cardReloadGeneration == reloadGeneration, let context = self.currentCardRenderContext,
-        context.reloadGeneration == reloadGeneration, context.items.indices.contains(index), context.items[index].id == item.id,
-        let slot = self.cardSlots[index], slot.representedItemID == item.id, slot.card != nil
-      else { return }
-
-      let existingCard = slot.card
-      let responder = self.window?.firstResponder as? NSView
-      let restoresFocus = existingCard.map { card in responder === card || responder?.isDescendant(of: card) == true } ?? false
-      let replacement = self.makeCard(item: item, thumbnail: thumbnail, index: index, context: context)
-      slot.attachCard(replacement)
-      self.configureCardCallbacks(replacement, slot: slot)
-      self.applyCurrentCardState(replacement, index: index)
-      self.cardViews = self.renderedCardsInItemOrder()
-      if restoresFocus { self.window?.makeFirstResponder(replacement) }
-    }
+    return ClipboardItemCardView(configuration: configuration, thumbnail: nil, index: index)
   }
 
   private func renderCardIfNeeded(at index: Int) {

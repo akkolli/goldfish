@@ -49,17 +49,8 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
     saveButton.keyEquivalent = "\r"
     saveButton.keyEquivalentModifierMask = .command
     for (button, symbol, label) in [(cancelButton, "xmark", "Cancel"), (saveButton, "checkmark", "Save")] {
-      button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?.withSymbolConfiguration(
-        .init(pointSize: 12, weight: .semibold))
-      button.imagePosition = .imageOnly
-      button.imageScaling = .scaleProportionallyDown
-      button.bezelStyle = .smallSquare
-      button.isBordered = false
-      button.configureAppearance(size: 30)
-      button.widthAnchor.constraint(equalToConstant: 30).isActive = true
-      button.heightAnchor.constraint(equalToConstant: 30).isActive = true
+      button.configureIcon(symbol, label: label, symbolConfiguration: .init(pointSize: 12, weight: .semibold), bezel: .smallSquare)
       button.toolTip = label == "Save" ? "Save (Command-Return)" : "Cancel (Escape)"
-      button.setAccessibilityLabel(label)
     }
 
     let divider = NSBox()

@@ -6,34 +6,11 @@ import XCTest
 
 /// Exercises the shipping clipboard, storage, search, transfer, and shelf paths
 /// together. Each workflow owns an isolated history and owns a private pasteboard.
-final class GoldfishWorkflowTests: ClipboardTestCase {
-  private var directory: URL!
-  private var defaults: UserDefaults!
-  private var settings: SettingsModel!
-  private var encryption: ClipboardEncryptionService!
-  private var cache: ClipboardCacheService!
-  private var store: ClipboardStore!
-
+final class GoldfishWorkflowTests: StoredClipboardTestCase {
+  override var encryptionByte: UInt8? { 71 }
   override func setUpWithError() throws {
     _ = NSApplication.shared
-    defaults = makeTestDefaults()
-    directory = try makeTempDirectory()
-    settings = SettingsModel(defaults: defaults)
-    settings.historyRetention = .forever
-    encryption = testEncryption(byte: 71)
-    cache = ClipboardCacheService(baseURL: directory, encryptionService: encryption)
-    store = ClipboardStore(settings: settings, cacheService: cache, baseURL: directory, encryptionService: encryption)
-
-  }
-
-  override func tearDownWithError() throws {
-    store.flushPersistenceForTesting()
-    cache.flushForTesting()
-    store = nil
-    cache = nil
-    settings = nil
-    encryption = nil
-    try super.tearDownWithError()
+    try super.setUpWithError()
   }
 
   func testCopyCaptureSearchTransferAndEncryptedRelaunch() throws {
@@ -133,6 +110,26 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
     XCTAssertTrue(relaunchedSettings.customCollectionNames.contains("Research"))
   }
 
+  func testStructuredFieldAliasesRespectExactValuesAlternativesAndOtherFields() {
+    let item = testItem(
+      payload: "A café note", sourceApp: "Notes Plus", sourceAppBundleId: "com.example.notes", collectionName: "Ideas",
+      sourceDeviceName: "Desk Mac")
+    let engine = ClipboardPanelSearchEngine()
+    for (keys, value) in [
+      (["app", "source", "from"], "\"Notes Plus\""), (["device", "devices", "machine", "computer"], "\"Desk Mac\""),
+      (["collection", "folder", "list", "pinboard", "pinboards", "board", "boards"], "Ideas"),
+    ] { for key in keys { XCTAssertTrue(engine.matches(item, query: engine.parse("\(key):\(value)"), includeImageText: false), key) } }
+    for (query, expected) in [
+      ("cafe app:Notes", true), ("app:\"Notes\"", false), ("app:\"com.example.notes\"", true), ("app:Missing,Notes", true),
+      ("app:Missing app:Notes", true), ("app:Missing,Absent", false), ("app:\"Notes Plus\" device:Desk pinboard:Ideas", true),
+      ("app:Notes device:Elsewhere pinboard:Ideas", false), ("app:Notes device:Desk pinboard:Absent", false),
+    ] { XCTAssertEqual(engine.matches(item, query: engine.parse(query), includeImageText: false), expected, query) }
+    let unassigned = testItem(payload: "A note", sourceApp: nil, sourceDeviceName: nil)
+    for query in ["app:Notes", "collection:Ideas"] {
+      XCTAssertFalse(engine.matches(unassigned, query: engine.parse(query), includeImageText: false), query)
+    }
+  }
+
   func testDestinationCountsMatchPresentationFiltersIncludingTextLinks() {
     let cases: [(ClipboardItemKind, String, [ClipboardSortMode])] = [
       (.url, "https://example.com/direct", [.links]), (.text, "https://example.com/plain", [.links]),
@@ -197,7 +194,8 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
     for layout in [ClipboardShelfLayout.sidebar, .cards] {
       settings.shelfLayout = layout
       let existing = Set(NSApp.windows.map(ObjectIdentifier.init))
-      let controller = ClipboardPanelController(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
+      let controller = ClipboardPanelController(
+        pasteboard: pasteboard, store: store, settings: settings, cacheService: cache, preferredScreen: { self.interfaceScreen })
       let window = try XCTUnwrap(NSApp.windows.first { !existing.contains(ObjectIdentifier($0)) && $0 is NSPanel })
       defer {
         controller.hide(immediate: true)
@@ -231,6 +229,7 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
 
   func testPreviewInheritsShelfPrivacyLevelAndOwnership() throws {
     let parent = NSWindow(contentRect: .zero, styleMask: [], backing: .buffered, defer: false)
+    positionInterfaceWindow(parent)
     let child = NSPanel(contentRect: .zero, styleMask: [.nonactivatingPanel], backing: .buffered, defer: false)
     parent.isReleasedWhenClosed = false
     let preview = ClipboardAuxiliaryWindowController(window: child)
@@ -261,6 +260,7 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
       contentRect: NSRect(x: 100, y: 100, width: 460, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     window.contentView = panel
+    positionInterfaceWindow(window)
     defer { window.close() }
     window.makeKeyAndOrderFront(nil)
     panel.layoutSubtreeIfNeeded()
@@ -296,6 +296,40 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
     XCTAssertEqual(model.selectedIndex, hovered.representedIndex)
   }
 
+  func testThumbnailCompletionKeepsTheFocusedCardAndItsSelection() throws {
+    let ready = DispatchSemaphore(value: 0)
+    let image = NSImage(size: NSSize(width: 24, height: 24))
+    store.upsert(item("A pending picture", kind: .image))
+    let model = ClipboardPanelViewModel(
+      pasteboard: pasteboard, store: store, settings: settings, cacheService: cache,
+      thumbnailLoader: { _ in
+        _ = ready.wait(timeout: .now() + 2)
+        return image
+      })
+    let panel = ClipboardPanelView(viewModel: model, onClose: {})
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = panel
+    positionInterfaceWindow(window)
+    defer {
+      ready.signal()
+      window.close()
+    }
+    window.makeKeyAndOrderFront(nil)
+    panel.layoutSubtreeIfNeeded()
+    let card = try XCTUnwrap(descendants(panel).compactMap { $0 as? ClipboardItemCardView }.first)
+    XCTAssertFalse(card.hasThumbnail)
+    XCTAssertTrue(window.makeFirstResponder(card))
+    let selection = model.selectedItemIDs
+    let label = card.accessibilityLabel()
+    ready.signal()
+    waitUntil { card.hasThumbnail }
+    XCTAssertTrue(descendants(panel).contains { $0 === card }, "Loading a preview must retain the existing card")
+    XCTAssertTrue(window.firstResponder === card)
+    XCTAssertEqual(model.selectedItemIDs, selection)
+    XCTAssertEqual(card.accessibilityLabel(), label)
+  }
+
   func testSettingsWindowNavigationChangesPersistentCaptureAndAppearancePreferences() throws {
     let existing = Set(NSApp.windows.map(ObjectIdentifier.init))
     let controller = SettingsWindowController(settings: settings, store: store, cacheService: cache)
@@ -304,6 +338,7 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
         !existing.contains(ObjectIdentifier($0)) && $0.title == "Goldfish Settings — " + AppConfiguration.buildDescription
       })
     defer { window.close() }
+    positionInterfaceWindow(window)
     controller.show()
     XCTAssertTrue(window.isVisible)
 
@@ -337,16 +372,6 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
     pasteboard.clearContents()
     XCTAssertTrue(pasteboard.setString(text, forType: .string))
   }
-
-  private func waitUntil(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) {
-    let deadline = Date().addingTimeInterval(1.5)
-    while !condition() && Date() < deadline { settle(0.01) }
-    XCTAssertTrue(condition(), "Workflow did not reach its expected state", file: file, line: line)
-  }
-
-  private func settle(_ seconds: TimeInterval = 0.04) { RunLoop.main.run(until: Date().addingTimeInterval(seconds)) }
-
-  private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
 
   private func button(_ toolTip: String, in view: NSView) throws -> NSButton {
     try XCTUnwrap(descendants(view).compactMap { $0 as? NSButton }.first { $0.toolTip == toolTip })

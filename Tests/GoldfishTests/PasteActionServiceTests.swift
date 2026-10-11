@@ -180,6 +180,7 @@ final class PasteActionServiceTests: ClipboardTestCase {
       let item = testItem(
         kind: .richText, displayText: attributed.string, payload: path, payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(),
         useCount: 0)
+      XCTAssertEqual((service.pasteboardWriters(for: item).first as? NSPasteboardItem)?.types.first, .rtf)
       XCTAssertEqual(plainText ? service.copyPlainText(item) : service.copy(item), plainText ? .copiedPlainText : .copied)
       XCTAssertEqual(pasteboard.string(forType: .string), attributed.string)
       if plainText { XCTAssertNil(pasteboard.data(forType: .rtf)) } else { XCTAssertEqual(pasteboard.data(forType: .rtf), rtf) }

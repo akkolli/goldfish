@@ -6,6 +6,24 @@ final class ClipboardToolbarIconButton: NSButton {
 
   override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0) }
 
+  func configureIcon(
+    _ symbol: String, label: String, size: CGFloat = 30, symbolConfiguration: NSImage.SymbolConfiguration? = nil,
+    bezel: NSButton.BezelStyle? = nil, template: Bool? = nil
+  ) {
+    let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+    if let template { image?.isTemplate = template }
+    self.image = symbolConfiguration.flatMap { image?.withSymbolConfiguration($0) } ?? image
+    imagePosition = .imageOnly
+    imageScaling = .scaleProportionallyDown
+    if let bezel { bezelStyle = bezel }
+    isBordered = false
+    configureAppearance(size: size)
+    widthAnchor.constraint(equalToConstant: size).isActive = true
+    heightAnchor.constraint(equalToConstant: size).isActive = true
+    toolTip = label
+    setAccessibilityLabel(label)
+  }
+
   func configureAppearance(size: CGFloat) {
     wantsLayer = true
     layer?.cornerRadius = size / 2

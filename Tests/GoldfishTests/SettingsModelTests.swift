@@ -3,25 +3,26 @@ import XCTest
 @testable import Goldfish
 
 final class SettingsModelTests: IsolatedTestCase {
+  private lazy var defaults = makeTestDefaults()
+  private var changes: [SettingsModel.Change] = []
+  private lazy var settings: SettingsModel = {
+    let model = SettingsModel(defaults: defaults)
+    model.observe { [weak self] in self?.changes.append($0) }
+    return model
+  }()
+
   func testNewAndLegacyProfilesKeepTheVerticalShelf() {
-    let defaults = makeTestDefaults()
     XCTAssertEqual(SettingsModel(defaults: defaults).shelfLayout, .sidebar)
     defaults.removeObject(forKey: SettingsModel.Keys.shelfLayout)
     XCTAssertEqual(SettingsModel(defaults: defaults).shelfLayout, .sidebar)
     defaults.set(999, forKey: SettingsModel.Keys.shelfLayout)
     XCTAssertEqual(SettingsModel(defaults: defaults).shelfLayout, .sidebar)
     // An explicit layout choice still persists across launches.
-    let settings = SettingsModel(defaults: defaults)
     settings.shelfLayout = .cards
     XCTAssertEqual(SettingsModel(defaults: defaults).shelfLayout, .cards)
   }
 
   func testFreshProfileRequiresOnboardingUntilCompleted() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
     XCTAssertFalse(settings.onboardingCompleted)
     XCTAssertFalse(defaults.bool(forKey: SettingsModel.Keys.onboardingCompleted))
     XCTAssertTrue(settings.excludeSensitive)
@@ -37,10 +38,7 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testLegacyProfileDoesNotShowOnboardingAfterUpgrade() {
-    let defaults = makeTestDefaults()
     defaults.set(AppConfiguration.defaultHistoryLength, forKey: SettingsModel.Keys.maxHistoryItems)
-
-    let settings = SettingsModel(defaults: defaults)
 
     XCTAssertTrue(settings.onboardingCompleted)
     XCTAssertTrue(defaults.bool(forKey: SettingsModel.Keys.onboardingCompleted))
@@ -67,11 +65,6 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testPanelSidePersistsAndNotifies() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
     XCTAssertEqual(settings.panelSide, .right)
 
     settings.panelSide = .left
@@ -84,22 +77,14 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testImageCacheMinimumAllowsTwoMegabytes() {
-    let defaults = makeTestDefaults()
     let twoMegabytes = Int64(2 * 1024 * 1024)
     defaults.set(twoMegabytes, forKey: SettingsModel.Keys.imageCacheMaxBytes)
-
-    let settings = SettingsModel(defaults: defaults)
 
     XCTAssertEqual(AppConfiguration.minCacheMaxBytes, twoMegabytes)
     XCTAssertEqual(settings.imageCacheMaxBytes, twoMegabytes)
   }
 
   func testICloudSyncPersistsAndNotifies() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
     XCTAssertFalse(settings.iCloudSyncEnabled)
 
     settings.setCloudSyncStatus(message: "Backed up 3 clips to iCloud.")
@@ -125,11 +110,7 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testPauseCaptureUntilPersistsAndCanBeCleared() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
     let pauseUntil = Date(timeIntervalSince1970: 1_234_567)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
 
     settings.pauseCapture = true
     settings.pauseCaptureUntil = pauseUntil
@@ -148,11 +129,6 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testIgnoredAppsPersistsAndNotifiesNarrowChange() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
     settings.ignoredApps = ["Safari", "Xcode"]
 
     XCTAssertEqual(defaults.stringArray(forKey: SettingsModel.Keys.ignoredApps), ["Safari", "Xcode"])
@@ -163,11 +139,8 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testCommonControlSettingsNotifyNarrowChanges() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
     settings.excludeSensitive = false
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
+    changes.removeAll()
 
     settings.defaultSortMode = .links
     settings.includeImageTextInSearch = true
@@ -195,12 +168,8 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testIgnoredItemKindsCannotDisableEveryVisibleKind() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
     let allVisibleKindRawValues = Self.visibleItemKinds.map(\.rawValue)
     let expectedIgnoredKindRawValues = allVisibleKindRawValues.filter { $0 != ClipboardItemKind.text.rawValue }
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
 
     settings.ignoredItemKindsRaw = allVisibleKindRawValues
 
@@ -213,12 +182,9 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testStoredIgnoredItemKindsCannotDisableEveryVisibleKind() {
-    let defaults = makeTestDefaults()
     let allVisibleKindRawValues = Self.visibleItemKinds.map(\.rawValue)
     let expectedIgnoredKindRawValues = allVisibleKindRawValues.filter { $0 != ClipboardItemKind.text.rawValue }
     defaults.set(allVisibleKindRawValues, forKey: SettingsModel.Keys.ignoredItemKinds)
-
-    let settings = SettingsModel(defaults: defaults)
 
     XCTAssertEqual(settings.ignoredItemKindsRaw, expectedIgnoredKindRawValues)
     XCTAssertEqual(defaults.object(forKey: SettingsModel.Keys.ignoredItemKinds) as? [Int], expectedIgnoredKindRawValues)
@@ -249,11 +215,6 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testLimitAssignmentsAreClampedAndPersisted() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
     settings.maxHistoryItems = 1
     settings.maxHistoryItems = 100_000
     settings.imageCacheMaxBytes = 1
@@ -267,11 +228,6 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testHistoryRetentionDefaultsToOneMonthAndPersists() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
     XCTAssertEqual(settings.historyRetention, .oneMonth)
     XCTAssertEqual(defaults.integer(forKey: SettingsModel.Keys.historyRetention), HistoryRetention.oneMonth.rawValue)
 
@@ -285,11 +241,6 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testCustomCollectionsPersistWithNormalizedColors() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
     settings.ensureCollection(named: "  Research   Stack  ", colorHex: "0a9eb8")
     settings.ensureCollection(named: "research stack", colorHex: "#FF3355")
     settings.ensureCollection(named: "Client Work", colorHex: "not-a-color")
@@ -305,9 +256,6 @@ final class SettingsModelTests: IsolatedTestCase {
   }
 
   func testCustomCollectionsCanBeUpdatedAndDeleted() {
-    let defaults = makeTestDefaults()
-    let settings = SettingsModel(defaults: defaults)
-
     settings.ensureCollection(named: "Research Stack", colorHex: "#0A9EB8", icon: "book.closed.fill")
     settings.ensureCollection(named: "Client Work", colorHex: "#FF3355")
 

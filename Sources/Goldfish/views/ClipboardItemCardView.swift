@@ -28,7 +28,7 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
   private weak var previewContent: ClipboardCardPreviewView?
   var renderedTextScale: CGFloat { layout.textScale }
   private let selectionOutline = CALayer()
-  let hasThumbnail: Bool
+  var hasThumbnail: Bool { previewContent?.thumbnail != nil }
   private var isActiveSelection = false
   private var isSelected = false
   private var selectedGroupCount = 1
@@ -54,9 +54,10 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
 
   func refreshRelativeDate() { previewContent?.needsDisplay = true }
 
+  func updateThumbnail(_ image: NSImage) { previewContent?.thumbnail = image }
+
   init(configuration: ClipboardCardConfiguration, thumbnail: NSImage?, index: Int) {
     let item = configuration.item
-    hasThumbnail = thumbnail != nil
     self.index = index
     self.configuration = configuration
     super.init(frame: .zero)

@@ -10,8 +10,8 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
   private let inputSurface = PinboardNameSurface()
   private let saveButton = ClipboardToolbarIconButton(title: "Save Pinboard", target: nil, action: nil)
   private let message = NSTextField(labelWithString: "")
-  private var swatches: [PinboardColorChoiceButton] = []
-  private var iconButtons: [PinboardIconChoiceButton] = []
+  private var swatches: [PinboardChoiceButton] = []
+  private var iconButtons: [PinboardChoiceButton] = []
   private var color: NSColor
   private var icon: String
   private let initialName: String
@@ -94,7 +94,7 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
 
     var previous: NSView = colorLabel
     for (index, swatchColor) in Self.palette.enumerated() {
-      let swatch = PinboardColorChoiceButton(color: swatchColor, target: self, action: #selector(selectSwatch(_:)))
+      let swatch = PinboardChoiceButton(color: swatchColor, target: self, action: #selector(selectSwatch(_:)))
       swatch.tag = index
       swatch.translatesAutoresizingMaskIntoConstraints = false
       surface.addSubview(swatch)
@@ -108,7 +108,7 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
     }
     previous = iconLabel
     for (index, choice) in ClipboardCollectionIcon.choices.enumerated() {
-      let button = PinboardIconChoiceButton(symbol: choice.symbol, label: choice.label, target: self, action: #selector(selectIcon(_:)))
+      let button = PinboardChoiceButton(symbol: choice.symbol, label: choice.label, target: self, action: #selector(selectIcon(_:)))
       button.tag = index
       button.translatesAutoresizingMaskIntoConstraints = false
       surface.addSubview(button)
@@ -226,112 +226,55 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
   }
 
   private func configureIcon(_ button: ClipboardToolbarIconButton, symbol: String, label: String) {
-    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?.withSymbolConfiguration(
-      .init(pointSize: 12, weight: .semibold))
-    button.imagePosition = .imageOnly
-    button.imageScaling = .scaleProportionallyDown
-    button.isBordered = false
-    button.configureAppearance(size: 30)
-    button.widthAnchor.constraint(equalToConstant: 30).isActive = true
-    button.heightAnchor.constraint(equalToConstant: 30).isActive = true
-    button.toolTip = label
-    button.setAccessibilityLabel(label)
+    button.configureIcon(symbol, label: label, symbolConfiguration: .init(pointSize: 12, weight: .semibold))
   }
 }
 
-private final class PinboardColorChoiceButton: NSButton {
-  var isChoiceSelected = false { didSet { updateAppearance() } }
-  private let swatchColor: NSColor
+/// Color and symbol choices share selection, pointer and appearance ownership.
+private final class PinboardChoiceButton: NSButton {
+  private let swatchColor: NSColor?
   private var isHovered = false
   private var hoverArea: NSTrackingArea?
+  var isChoiceSelected = false { didSet { updateAppearance() } }
+  var accentColor: NSColor = .controlAccentColor { didSet { updateAppearance() } }
 
-  init(color: NSColor, target: AnyObject, action: Selector) {
+  convenience init(color: NSColor, target: AnyObject, action: Selector) {
+    self.init(color: color, symbol: nil, label: "\(color.accessibilityName.capitalized) pinboard color", target: target, action: action)
+  }
+
+  convenience init(symbol: String, label: String, target: AnyObject, action: Selector) {
+    self.init(color: nil, symbol: symbol, label: label, target: target, action: action)
+  }
+
+  private init(color: NSColor?, symbol: String?, label: String, target: AnyObject, action: Selector) {
     swatchColor = color
     super.init(frame: .zero)
     self.target = target
     self.action = action
     title = ""
     isBordered = false
-    toolTip = "\(color.accessibilityName.capitalized) pinboard color"
-    setAccessibilityLabel(toolTip!)
-    wantsLayer = true
-    layer?.cornerRadius = 11
-    layer?.borderWidth = 2
-    updateAppearance()
-  }
-
-  required init?(coder: NSCoder) { nil }
-
-  override func updateTrackingAreas() {
-    super.updateTrackingAreas()
-    if let hoverArea { removeTrackingArea(hoverArea) }
-    hoverArea = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
-    addTrackingArea(hoverArea!)
-  }
-
-  override func mouseEntered(with event: NSEvent) {
-    isHovered = true
-    updateAppearance()
-  }
-  override func mouseExited(with event: NSEvent) {
-    isHovered = false
-    updateAppearance()
-  }
-  override func resetCursorRects() {
-    super.resetCursorRects()
-    addCursorRect(bounds.intersection(visibleRect), cursor: .arrow)
-  }
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    updateAppearance()
-  }
-
-  private func updateAppearance() {
-    effectiveAppearance.performAsCurrentDrawingAppearance {
-      layer?.backgroundColor = swatchColor.cgColor
-      let ink = NSColor.labelColor
-      layer?.borderColor = isChoiceSelected ? ink.withAlphaComponent(0.9).cgColor : ink.withAlphaComponent(isHovered ? 0.42 : 0).cgColor
-      layer?.shadowColor = NSColor.black.cgColor
-      layer?.shadowOpacity = isChoiceSelected ? 0.22 : 0
-      layer?.shadowRadius = 3
-    }
-  }
-}
-
-private final class PinboardIconChoiceButton: NSButton {
-  var isChoiceSelected = false { didSet { updateAppearance() } }
-  var accentColor: NSColor = .controlAccentColor { didSet { updateAppearance() } }
-  private var isHovered = false
-  private var hoverArea: NSTrackingArea?
-
-  init(symbol: String, label: String, target: AnyObject, action: Selector) {
-    super.init(frame: .zero)
-    self.target = target
-    self.action = action
-    title = ""
-    isBordered = false
-    image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?.withSymbolConfiguration(
-      .init(pointSize: 12, weight: .medium))
-    imagePosition = .imageOnly
-    imageScaling = .scaleProportionallyDown
     toolTip = label
-    setAccessibilityLabel("\(label) icon")
+    setAccessibilityLabel(color == nil ? "\(label) icon" : label)
     wantsLayer = true
-    layer?.cornerRadius = 8
-    layer?.cornerCurve = .continuous
-    layer?.borderWidth = 1
+    layer?.cornerRadius = color == nil ? 8 : 11
+    layer?.borderWidth = color == nil ? 1 : 2
+    if let symbol {
+      image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?.withSymbolConfiguration(
+        .init(pointSize: 12, weight: .medium))
+      imagePosition = .imageOnly
+      imageScaling = .scaleProportionallyDown
+      layer?.cornerCurve = .continuous
+    }
     updateAppearance()
   }
 
   required init?(coder: NSCoder) { nil }
-
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
     if let hoverArea { removeTrackingArea(hoverArea) }
     hoverArea = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
     addTrackingArea(hoverArea!)
   }
-
   override func mouseEntered(with event: NSEvent) {
     isHovered = true
     updateAppearance()
@@ -344,7 +287,6 @@ private final class PinboardIconChoiceButton: NSButton {
     super.resetCursorRects()
     addCursorRect(bounds.intersection(visibleRect), cursor: .arrow)
   }
-
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
     updateAppearance()
@@ -352,11 +294,20 @@ private final class PinboardIconChoiceButton: NSButton {
 
   private func updateAppearance() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
-      contentTintColor = isChoiceSelected ? accentColor : .secondaryLabelColor
-      layer?.backgroundColor =
-        isChoiceSelected
-        ? accentColor.withAlphaComponent(0.17).cgColor : NSColor.labelColor.withAlphaComponent(isHovered ? 0.08 : 0).cgColor
-      layer?.borderColor = isChoiceSelected ? accentColor.withAlphaComponent(0.42).cgColor : NSColor.clear.cgColor
+      if let swatchColor {
+        layer?.backgroundColor = swatchColor.cgColor
+        let ink = NSColor.labelColor
+        layer?.borderColor = isChoiceSelected ? ink.withAlphaComponent(0.9).cgColor : ink.withAlphaComponent(isHovered ? 0.42 : 0).cgColor
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = isChoiceSelected ? 0.22 : 0
+        layer?.shadowRadius = 3
+      } else {
+        contentTintColor = isChoiceSelected ? accentColor : .secondaryLabelColor
+        layer?.backgroundColor =
+          isChoiceSelected
+          ? accentColor.withAlphaComponent(0.17).cgColor : NSColor.labelColor.withAlphaComponent(isHovered ? 0.08 : 0).cgColor
+        layer?.borderColor = isChoiceSelected ? accentColor.withAlphaComponent(0.42).cgColor : NSColor.clear.cgColor
+      }
     }
   }
 }

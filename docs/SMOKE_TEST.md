@@ -4,7 +4,7 @@ Use this checklist before a release or after changes to the shelf, pasteboard, s
 
 ## Setup
 
-1. Quit running copies before `./scripts/check.sh` because capture/paste tests exercise the system clipboard. Then open `build/Goldfish.app`.
+1. Quit running copies before `./scripts/check.sh`; capture/paste tests use isolated clipboards. Set `GOLDFISH_TEST_SCREEN` to a display name to keep interface checks on that screen. Then open `build/Goldfish.app`.
 2. With fresh preferences, confirm the compact welcome screen appears before the shelf. It shows a card-shelf preview, shortcut chooser, optional automatic-paste permission, privacy summary, and one Start button. Check light/dark appearance and bottom-button clearance. Advanced preferences belong in Settings, not setup.
 3. Copy a unique marker while setup is open. Start using Goldfish and confirm that marker is not backfilled. Relaunch and confirm the welcome screen does not return. Reopening setup must preserve retention, secret filtering, login, and Dock preferences.
 4. Confirm the menu-bar icon appears when `Show Goldfish in the menu bar` is enabled.

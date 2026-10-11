@@ -5,25 +5,7 @@ import XCTest
 
 @testable import Goldfish
 
-final class ClipboardStoreTests: IsolatedTestCase {
-  private var defaults: UserDefaults!
-  private var cacheService: ClipboardCacheService!
-  private var baseURL: URL!
-
-  override func setUpWithError() throws {
-    try super.setUpWithError()
-    defaults = makeTestDefaults()
-    baseURL = try makeTempDirectory()
-    cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption())
-  }
-
-  override func tearDownWithError() throws {
-    cacheService = nil
-    defaults = nil
-    baseURL = nil
-    try super.tearDownWithError()
-  }
-
+final class ClipboardStoreTests: StoredClipboardTestCase {
   func testContentHashesKeepTheExistingSHA256Format() {
     let store = makeStore(settings: makeSettings(maxHistory: 4))
     for (text, expected) in [
@@ -98,7 +80,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
         }
       ]
       """
-    try legacyJSON.data(using: .utf8)!.write(to: baseURL.appendingPathComponent("history.json"))
+    try legacyJSON.data(using: .utf8)!.write(to: directory.appendingPathComponent("history.json"))
 
     let store = makeStore(settings: settings)
     store.flushPersistenceForTesting()
@@ -166,8 +148,8 @@ final class ClipboardStoreTests: IsolatedTestCase {
     store.upsert(makeItem("private", displayText: "Private", created: Date()))
     store.flushPersistenceForTesting()
 
-    XCTAssertEqual(try testPermissions(baseURL), 0o700)
-    XCTAssertEqual(try testPermissions(baseURL.appendingPathComponent("history.sqlite")), 0o600)
+    XCTAssertEqual(try testPermissions(directory), 0o700)
+    XCTAssertEqual(try testPermissions(directory.appendingPathComponent("history.sqlite")), 0o600)
   }
 
   func testRemoveAllResetsEncryptionKeyAfterClearingDatabase() throws {
@@ -231,14 +213,14 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let item = makeItem("encrypted history", displayText: "Encrypted", created: Date())
     writer.upsert(item)
     writer.flushPersistenceForTesting()
-    let databaseSizeBeforeReload = try fileSize(baseURL.appendingPathComponent("history.sqlite"))
+    let databaseSizeBeforeReload = try fileSize(directory.appendingPathComponent("history.sqlite"))
 
     let reader = makeStore(settings: settings, encryptionService: testEncryption(byte: 9))
     reader.flushPersistenceForTesting()
 
     XCTAssertTrue(reader.items.isEmpty)
     XCTAssertNotNil(reader.loadWarningMessage)
-    XCTAssertEqual(try fileSize(baseURL.appendingPathComponent("history.sqlite")), databaseSizeBeforeReload)
+    XCTAssertEqual(try fileSize(directory.appendingPathComponent("history.sqlite")), databaseSizeBeforeReload)
   }
 
   func testImportCannotReplaceUnreadableHistory() throws {
@@ -246,7 +228,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let writer = makeStore(settings: settings, encryptionService: testEncryption(byte: 7))
     writer.upsert(makeItem("must remain recoverable", displayText: "Private", created: Date()))
     writer.flushPersistenceForTesting()
-    let archive = baseURL.appendingPathComponent("backup.clipboredarchive")
+    let archive = directory.appendingPathComponent("backup.clipboredarchive")
     try writer.exportArchive(to: archive)
     let reader = makeStore(settings: settings, encryptionService: testEncryption(byte: 9))
     XCTAssertThrowsError(try reader.exportArchive(to: archive))
@@ -269,7 +251,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     XCTAssertTrue(store.items.isEmpty)
     XCTAssertFalse(try databaseText().contains("never persist this plaintext"))
     XCTAssertTrue(settings.captureStatusMessage.contains("encryption key"))
-    let secureCache = ClipboardCacheService(baseURL: baseURL, encryptionService: encryption)
+    let secureCache = ClipboardCacheService(baseURL: directory, encryptionService: encryption)
     XCTAssertNil(secureCache.cachePDF(Data("private attachment".utf8), id: UUID()))
   }
 
@@ -316,13 +298,13 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let settings = makeSettings(maxHistory: 50)
     let store = makeStore(settings: settings)
     let hash = "same-pdf"
-    let oldPath = try XCTUnwrap(cacheService.cachePDF(Data("old".utf8), id: UUID()))
-    let newPath = try XCTUnwrap(cacheService.cachePDF(Data("new".utf8), id: UUID()))
+    let oldPath = try XCTUnwrap(cache.cachePDF(Data("old".utf8), id: UUID()))
+    let newPath = try XCTUnwrap(cache.cachePDF(Data("new".utf8), id: UUID()))
 
     store.upsert(makePDFItem(path: oldPath, hash: hash, created: Date(timeIntervalSince1970: 10)))
     store.upsert(makePDFItem(path: newPath, hash: hash, created: Date(timeIntervalSince1970: 20)))
     store.flushPersistenceForTesting()
-    cacheService.flushForTesting()
+    cache.flushForTesting()
 
     XCTAssertEqual(store.items.count, 1)
     XCTAssertEqual(store.items.first?.payload, newPath)
@@ -333,7 +315,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
   func testRemoveCanDeferManagedCachePurgeForUndoRestore() throws {
     let settings = makeSettings(maxHistory: 50)
     let store = makeStore(settings: settings)
-    let cachedImage = try XCTUnwrap(cacheService.cacheImage(testImage(color: .systemBlue), id: UUID()))
+    let cachedImage = try XCTUnwrap(cache.cacheImage(testImage(color: .systemBlue), id: UUID()))
     let item = makeImageItem(
       fullPath: cachedImage.full, thumbPath: cachedImage.thumb, hash: "undo-image", ocrText: "undo searchable text",
       created: Date(timeIntervalSince1970: 10))
@@ -342,7 +324,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
 
     let removal = try XCTUnwrap(store.remove(item.id, purgeManagedCache: false))
     store.flushPersistenceForTesting()
-    cacheService.flushForTesting()
+    cache.flushForTesting()
 
     XCTAssertTrue(store.items.isEmpty)
     XCTAssertTrue(FileManager.default.fileExists(atPath: cachedImage.full))
@@ -361,7 +343,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
 
     _ = store.remove(item.id)
     store.flushPersistenceForTesting()
-    cacheService.flushForTesting()
+    cache.flushForTesting()
 
     XCTAssertFalse(FileManager.default.fileExists(atPath: cachedImage.full))
     XCTAssertFalse(FileManager.default.fileExists(atPath: cachedImage.thumb))
@@ -370,11 +352,11 @@ final class ClipboardStoreTests: IsolatedTestCase {
   func testArchiveExportImportMovesHistoryAndManagedAttachmentsToNewStorage() throws {
     let settings = makeSettings(maxHistory: 50)
     let store = makeStore(settings: settings)
-    let cachedImage = try XCTUnwrap(cacheService.cacheImage(testImage(color: .systemBlue), id: UUID()))
-    let sourceFullImageData = try XCTUnwrap(cacheService.data(for: cachedImage.full))
-    let sourceThumbData = try XCTUnwrap(cacheService.data(for: cachedImage.thumb))
+    let cachedImage = try XCTUnwrap(cache.cacheImage(testImage(color: .systemBlue), id: UUID()))
+    let sourceFullImageData = try XCTUnwrap(cache.data(for: cachedImage.full))
+    let sourceThumbData = try XCTUnwrap(cache.data(for: cachedImage.thumb))
     let sourcePDFData = Data("%PDF archive payload".utf8)
-    let sourcePDFPath = try XCTUnwrap(cacheService.cachePDF(sourcePDFData, id: UUID()))
+    let sourcePDFPath = try XCTUnwrap(cache.cachePDF(sourcePDFData, id: UUID()))
     let created = Date(timeIntervalSince1970: 300)
 
     var note = makeItem("archive note", displayText: "Archive Note", created: created)
@@ -397,7 +379,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     store.upsert(pdf)
     store.flushPersistenceForTesting()
 
-    let archiveURL = baseURL.appendingPathComponent("backup.clipboredarchive")
+    let archiveURL = directory.appendingPathComponent("backup.clipboredarchive")
     let exportSummary = try store.exportArchive(to: archiveURL)
 
     XCTAssertEqual(exportSummary.itemCount, 3)
@@ -464,13 +446,13 @@ final class ClipboardStoreTests: IsolatedTestCase {
   }
 
   func testArchiveImportRejectsOversizedFileBeforeLoadingIt() throws {
-    let archiveURL = baseURL.appendingPathComponent("oversized.clipboredarchive")
+    let archiveURL = directory.appendingPathComponent("oversized.clipboredarchive")
     XCTAssertTrue(FileManager.default.createFile(atPath: archiveURL.path, contents: nil))
     let handle = try FileHandle(forWritingTo: archiveURL)
     try handle.truncate(atOffset: UInt64(AppConfiguration.maxPortableArchiveBytes + 1))
     try handle.close()
 
-    XCTAssertThrowsError(try ClipboardArchiveService().importArchive(from: archiveURL, cacheService: cacheService)) { error in
+    XCTAssertThrowsError(try ClipboardArchiveService().importArchive(from: archiveURL, cacheService: cache)) { error in
       guard case ClipboardArchiveError.archiveTooLarge = error else { return XCTFail("Expected archiveTooLarge, got \(error)") }
     }
   }
@@ -488,7 +470,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     store.upsert(unrelated)
     store.flushPersistenceForTesting()
 
-    let archiveURL = baseURL.appendingPathComponent("client-work.clipboredarchive")
+    let archiveURL = directory.appendingPathComponent("client-work.clipboredarchive")
     let exportSummary = try store.exportCollection(named: "Client Work", to: archiveURL)
 
     XCTAssertEqual(exportSummary.itemCount, 1)
@@ -501,7 +483,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let destinationSettings = SettingsModel(defaults: destinationDefaults)
     destinationSettings.maxHistoryItems = 50
     destinationSettings.historyRetention = .forever
-    let destinationBaseURL = baseURL.appendingPathComponent("pinboard-destination", isDirectory: true)
+    let destinationBaseURL = directory.appendingPathComponent("pinboard-destination", isDirectory: true)
     let destinationCache = ClipboardCacheService(baseURL: destinationBaseURL, encryptionService: testEncryption())
     let destinationStore = ClipboardStore(
       settings: destinationSettings, cacheService: destinationCache, baseURL: destinationBaseURL, encryptionService: testEncryption())
@@ -520,7 +502,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let settings = makeSettings(maxHistory: 50)
     settings.ensureCollection(named: "Read Later", colorHex: "#0A9EB8", icon: "book.closed.fill")
     let store = makeStore(settings: settings)
-    let archiveURL = baseURL.appendingPathComponent("read-later-empty.clipboredarchive")
+    let archiveURL = directory.appendingPathComponent("read-later-empty.clipboredarchive")
 
     let exportSummary = try store.exportCollection(named: "Read Later", to: archiveURL)
 
@@ -531,7 +513,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     destinationDefaults.removePersistentDomain(forName: destinationDefaultsSuite)
     defer { destinationDefaults.removePersistentDomain(forName: destinationDefaultsSuite) }
     let destinationSettings = SettingsModel(defaults: destinationDefaults)
-    let destinationBaseURL = baseURL.appendingPathComponent("empty-pinboard-destination", isDirectory: true)
+    let destinationBaseURL = directory.appendingPathComponent("empty-pinboard-destination", isDirectory: true)
     let destinationStore = ClipboardStore(
       settings: destinationSettings, cacheService: ClipboardCacheService(baseURL: destinationBaseURL, encryptionService: testEncryption()),
       baseURL: destinationBaseURL, encryptionService: testEncryption())
@@ -557,12 +539,11 @@ final class ClipboardStoreTests: IsolatedTestCase {
   private func makeStore(settings: SettingsModel) -> ClipboardStore { makeStore(settings: settings, encryptionService: testEncryption()) }
 
   private func makeStore(settings: SettingsModel, encryptionService: ClipboardEncryptionService) -> ClipboardStore {
-    ClipboardStore(settings: settings, cacheService: cacheService, baseURL: baseURL, encryptionService: encryptionService)
+    ClipboardStore(settings: settings, cacheService: cache, baseURL: directory, encryptionService: encryptionService)
   }
 
   private func makeItem(_ payload: String, displayText: String, created: Date) -> ClipboardItem {
-    let hash = settingsHash(for: payload)
-    return testItem(displayText: displayText, payload: payload, payloadHash: hash, createdAt: created)
+    testItem(displayText: displayText, payload: payload, createdAt: created)
   }
 
   private func makePDFItem(path: String, hash: String, created: Date) -> ClipboardItem {
@@ -575,8 +556,6 @@ final class ClipboardStoreTests: IsolatedTestCase {
       imagePath: fullPath, thumbnailPath: thumbPath, sourceAppBundleId: "com.apple.Preview", ocrText: ocrText)
   }
 
-  private func settingsHash(for payload: String) -> String { payload }
-
   private func fileSize(_ url: URL) throws -> Int64 {
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
     let size = try XCTUnwrap(attributes[.size] as? NSNumber)
@@ -584,7 +563,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
   }
 
   private func databaseText() throws -> String {
-    let data = try Data(contentsOf: baseURL.appendingPathComponent("history.sqlite"))
+    let data = try Data(contentsOf: directory.appendingPathComponent("history.sqlite"))
     return String(decoding: data, as: UTF8.self)
   }
 

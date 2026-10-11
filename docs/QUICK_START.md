@@ -67,7 +67,7 @@ vertical shelf is the default; neither layout has a bottom action bar.
 Text clips open in an attached editor. Command-Return saves; Escape cancels.
 An unsuccessful save keeps your draft in the editor. Preview with Space; Escape or the
 preview’s close button returns to the shelf. Clicking outside dismisses the shelf and
-its preview. The shelf stays clear of the Dock and remembers your paste destination.
+its preview. The shelf opens above the Dock and remembers your paste destination.
 
 ## Privacy and limitations
 
