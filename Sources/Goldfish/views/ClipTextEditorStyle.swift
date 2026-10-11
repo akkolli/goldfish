@@ -1,6 +1,18 @@
 import AppKit
 
-final class ClipEditorPanel: NSPanel {
+class ClipEditorPanel: NSPanel {
+  convenience init(title: String, size: NSSize) {
+    self.init(
+      contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    self.title = title
+    isOpaque = false
+    backgroundColor = .clear
+    hasShadow = true
+    isReleasedWhenClosed = false
+    hidesOnDeactivate = false
+    acceptsMouseMovedEvents = true
+  }
+
   override var canBecomeKey: Bool { true }
   override var canBecomeMain: Bool { false }
 }
@@ -66,5 +78,20 @@ final class ClipEditorSheetSurface: NSVisualEffectView {
       tint.layer?.backgroundColor = ClipboardShelfStyle.shelfTint.cgColor
       layer?.borderColor = ClipboardShelfStyle.shelfBorder.cgColor
     }
+  }
+}
+
+extension NSWindow {
+  /// All attached shelf surfaces share privacy, space membership, and ownership.
+  func attachToShelf(_ parent: NSWindow, levelOffset: Int = 1, behavior: CollectionBehavior? = nil) {
+    level = Level(rawValue: parent.level.rawValue + levelOffset)
+    collectionBehavior = behavior ?? parent.collectionBehavior
+    sharingType = parent.sharingType
+    parent.addChildWindow(self, ordered: .above)
+  }
+
+  func detachFromShelf() {
+    parent?.removeChildWindow(self)
+    orderOut(nil)
   }
 }

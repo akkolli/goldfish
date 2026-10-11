@@ -149,55 +149,13 @@ func shelfDrawSymbol(_ name: String, in rect: NSRect, color: NSColor) {
   symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
 }
 
-private final class ShelfMenuPanel: NSPanel {
+private final class ShelfMenuPanel: ClipEditorPanel {
   var handleKey: (NSEvent) -> Bool = { _ in false }
   var onPointerMoved: ((NSPoint) -> Void)?
-  override var canBecomeKey: Bool { true }
-  override var canBecomeMain: Bool { false }
   override func sendEvent(_ event: NSEvent) {
     if event.type == .keyDown, handleKey(event) { return }
     super.sendEvent(event)
     if event.type == .mouseMoved || event.type == .scrollWheel { onPointerMoved?(event.locationInWindow) }
-  }
-}
-
-private final class ShelfMenuSurface: NSVisualEffectView {
-  private let tint = NSView()
-  private var displayOptionsObserver: NSObjectProtocol?
-
-  override init(frame frameRect: NSRect) {
-    super.init(frame: frameRect)
-    material = .sidebar
-    blendingMode = .behindWindow
-    state = .active
-    wantsLayer = true
-    layer?.cornerRadius = 16
-    layer?.cornerCurve = .continuous
-    layer?.masksToBounds = true
-    layer?.borderWidth = 0.5
-    tint.wantsLayer = true
-    tint.autoresizingMask = [.width, .height]
-    addSubview(tint)
-    refreshAppearance()
-    displayOptionsObserver = NSWorkspace.shared.notificationCenter.addObserver(
-      forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
-    ) { [weak self] _ in self?.refreshAppearance() }
-  }
-
-  required init?(coder: NSCoder) { nil }
-
-  deinit { if let displayOptionsObserver { NSWorkspace.shared.notificationCenter.removeObserver(displayOptionsObserver) } }
-
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    refreshAppearance()
-  }
-
-  private func refreshAppearance() {
-    effectiveAppearance.performAsCurrentDrawingAppearance {
-      tint.layer?.backgroundColor = ClipboardShelfStyle.shelfTint.cgColor
-      layer?.borderColor = ClipboardShelfStyle.shelfBorder.cgColor
-    }
   }
 }
 
@@ -307,28 +265,16 @@ final class ShelfMenuPresenter: NSObject, NSWindowDelegate {
     self.anchor = anchor
     owner = parent
     (anchor as? ShelfFilterButton)?.expanded = true
-    let panel = ShelfMenuPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 280, height: 100), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered,
-      defer: false)
-    panel.title = title
-    panel.isReleasedWhenClosed = false
-    panel.isOpaque = false
-    panel.backgroundColor = .clear
-    panel.hasShadow = true
-    panel.level = parent.level
-    panel.hidesOnDeactivate = false
-    panel.acceptsMouseMovedEvents = true
-    panel.collectionBehavior = ClipboardPanelController.panelCollectionBehavior
-    panel.sharingType = parent.sharingType
+    let panel = ShelfMenuPanel(title: title, size: NSSize(width: 280, height: 100))
     panel.delegate = self
     panel.handleKey = { [weak self] in self?.handleKey($0) ?? false }
     panel.onPointerMoved = { [weak self] location in self?.updateHoverForPointer(atWindowLocation: location) }
     window = panel
 
-    let surface: NSVisualEffectView = matchesShelfSurface ? ClipEditorSheetSurface(frame: .zero) : ShelfMenuSurface(frame: .zero)
-    let heading = NSTextField(labelWithString: title)
-    heading.font = .systemFont(ofSize: matchesShelfSurface ? 13 : 12, weight: .semibold)
-    heading.textColor = matchesShelfSurface ? .labelColor : ClipboardShelfStyle.secondaryText
+    let surface = ClipEditorSheetSurface(frame: .zero)
+    let heading = NativeUI.label(
+      title, font: .systemFont(ofSize: matchesShelfSurface ? 13 : 12, weight: .semibold),
+      color: matchesShelfSurface ? .labelColor : ClipboardShelfStyle.secondaryText)
     heading.translatesAutoresizingMaskIntoConstraints = false
     surface.addSubview(heading)
     let stack = ShelfMenuDocumentView()
@@ -345,9 +291,7 @@ final class ShelfMenuPresenter: NSObject, NSWindowDelegate {
         stack.setCustomSpacing(7, after: separator)
       }
       if let title = section.title {
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 11, weight: .medium)
-        label.textColor = ClipboardShelfStyle.secondaryText
+        let label = NativeUI.label(title, font: .systemFont(ofSize: 11, weight: .medium), color: ClipboardShelfStyle.secondaryText)
         let header = NSView()
         header.addSubview(label)
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -400,7 +344,7 @@ final class ShelfMenuPresenter: NSObject, NSWindowDelegate {
     let below = source.minY - height - 7
     let y = max(screen.minY + 8, below >= screen.minY + 8 ? below : min(source.maxY + 7, screen.maxY - height - 8))
     panel.setFrameOrigin(NSPoint(x: x, y: y))
-    parent.addChildWindow(panel, ordered: .above)
+    panel.attachToShelf(parent, levelOffset: 0, behavior: ClipboardPanelController.panelCollectionBehavior)
     clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
       guard let self, event.window === self.owner, let anchor = self.anchor else { return event }
       let point = anchor.convert(event.locationInWindow, from: nil)
@@ -434,8 +378,7 @@ final class ShelfMenuPresenter: NSObject, NSWindowDelegate {
     }
     let parent = owner
     let button = anchor
-    parent?.removeChildWindow(window)
-    window.orderOut(nil)
+    window.detachFromShelf()
     window.close()
     (button as? ShelfFilterButton)?.expanded = false
     rows.removeAll()

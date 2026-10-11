@@ -301,37 +301,8 @@ struct ClipboardItemCardContentFormatter {
     return path
   }
 
-  func accentColor(for kind: ClipboardItemKind) -> NSColor {
-    switch kind {
-    case .url: return NSColor(calibratedRed: 0.02, green: 0.47, blue: 0.98, alpha: 1)
-    case .text: return NSColor(calibratedRed: 0.96, green: 0.64, blue: 0.00, alpha: 1)
-    case .image: return NSColor(calibratedRed: 1.00, green: 0.22, blue: 0.25, alpha: 1)
-    case .richText: return NSColor(calibratedRed: 0.94, green: 0.12, blue: 0.48, alpha: 1)
-    case .file: return NSColor(calibratedRed: 0.11, green: 0.68, blue: 0.36, alpha: 1)
-    case .pdf: return NSColor(calibratedRed: 0.55, green: 0.35, blue: 0.88, alpha: 1)
-    case .audio: return NSColor(calibratedRed: 0.93, green: 0.12, blue: 0.34, alpha: 1)
-    case .video: return NSColor(calibratedRed: 0.43, green: 0.32, blue: 0.94, alpha: 1)
-    case .color: return NSColor(calibratedRed: 0.00, green: 0.65, blue: 0.74, alpha: 1)
-    case .code: return NSColor(calibratedRed: 0.25, green: 0.38, blue: 0.78, alpha: 1)
-    case .unknown: return .systemGray
-    }
-  }
-
-  func headerBadgeSymbol(for kind: ClipboardItemKind) -> String {
-    switch kind {
-    case .url: return "link"
-    case .text: return "text.alignleft"
-    case .image: return "photo"
-    case .richText: return "doc.richtext"
-    case .file: return "doc"
-    case .pdf: return "doc.text.fill"
-    case .audio: return "music.note"
-    case .video: return "film"
-    case .color: return "paintpalette"
-    case .code: return "chevron.left.forwardslash.chevron.right"
-    case .unknown: return "questionmark"
-    }
-  }
+  func accentColor(for kind: ClipboardItemKind) -> NSColor { kind.presentation.accentColor }
+  func headerBadgeSymbol(for kind: ClipboardItemKind) -> String { kind.presentation.symbol }
 
   func metadataText(for item: ClipboardItem) -> String {
     let time = relativeDateText(for: item.createdAt)
@@ -386,21 +357,7 @@ struct ClipboardItemCardContentFormatter {
     "Press Return to paste, or copy when automatic paste is unavailable. Space opens Quick Look. Command-R renames; Command-E edits text. Delete removes selected clips; Command-Z restores them."
   }
 
-  func kindLabel(for kind: ClipboardItemKind) -> String {
-    switch kind {
-    case .image: return "Image"
-    case .url: return "Link"
-    case .text: return "Text"
-    case .richText: return "Rich Text"
-    case .file: return "File"
-    case .unknown: return "Unknown"
-    case .pdf: return "PDF"
-    case .audio: return "Audio"
-    case .video: return "Video"
-    case .color: return "Color"
-    case .code: return "Code"
-    }
-  }
+  func kindLabel(for kind: ClipboardItemKind) -> String { kind.presentation.label }
 
   func relativeDateText(for date: Date) -> String {
     let seconds = max(0, Int(Date().timeIntervalSince(date)))

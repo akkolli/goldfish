@@ -134,10 +134,7 @@ final class LinkPreviewWindowController: ClipboardAuxiliaryWindowController, WKN
     toolbar.state = .active
     toolbar.translatesAutoresizingMaskIntoConstraints = false
 
-    let titleColumn = NSStackView(views: [titleLabel, addressLabel])
-    titleColumn.orientation = .vertical
-    titleColumn.alignment = .leading
-    titleColumn.spacing = 2
+    let titleColumn = NativeUI.stack([titleLabel, addressLabel], axis: .vertical, alignment: .leading, spacing: 2)
     titleColumn.translatesAutoresizingMaskIntoConstraints = false
 
     titleLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
@@ -151,15 +148,14 @@ final class LinkPreviewWindowController: ClipboardAuxiliaryWindowController, WKN
     addressLabel.maximumNumberOfLines = 1
     addressLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-    let controls = NSStackView(views: [
+    let controls = NativeUI.stack(
+      [
       configuredButton(backButton, symbol: "chevron.left", toolTip: "Back", action: #selector(goBack)),
       configuredButton(forwardButton, symbol: "chevron.right", toolTip: "Forward", action: #selector(goForward)),
       configuredButton(reloadButton, symbol: "arrow.clockwise", toolTip: "Reload", action: #selector(reload)),
       configuredButton(openExternalButton, symbol: "arrow.up.right.square", toolTip: "Open in Browser", action: #selector(openInBrowser)),
-    ])
-    controls.orientation = .horizontal
-    controls.alignment = .centerY
-    controls.spacing = 6
+    ],
+      axis: .horizontal, alignment: .centerY, spacing: 6)
     controls.translatesAutoresizingMaskIntoConstraints = false
 
     progressIndicator.isIndeterminate = false

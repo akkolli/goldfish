@@ -32,24 +32,14 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
     self.existingNames = existingNames
     self.onSave = onSave
     self.onFinish = onFinish
-    window = ClipEditorPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 318, height: 176), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered,
-      defer: false)
+    window = ClipEditorPanel(title: editing ? "Edit Pinboard" : "New Pinboard", size: NSSize(width: 318, height: 176))
     super.init()
 
-    window.title = editing ? "Edit Pinboard" : "New Pinboard"
-    window.isOpaque = false
-    window.backgroundColor = .clear
-    window.hasShadow = true
-    window.isReleasedWhenClosed = false
-    window.hidesOnDeactivate = false
-    window.acceptsMouseMovedEvents = true
     let surface = ClipEditorSheetSurface(frame: window.contentView?.bounds ?? .zero)
     window.contentView = surface
 
-    let heading = NSTextField(labelWithString: editing ? "Edit pinboard" : "New pinboard")
-    heading.font = .systemFont(ofSize: 13, weight: .semibold)
-    heading.textColor = .labelColor
+    let heading = NativeUI.label(
+      editing ? "Edit pinboard" : "New pinboard", font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
     let cancel = iconButton("xmark", label: "Cancel", action: #selector(dismiss))
     saveButton.target = self
     saveButton.action = #selector(save)
@@ -67,12 +57,8 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
     input.delegate = self
     inputSurface.addSubview(input)
 
-    let colorLabel = NSTextField(labelWithString: "Color")
-    colorLabel.font = .systemFont(ofSize: 11, weight: .medium)
-    colorLabel.textColor = ClipboardShelfStyle.secondaryText
-    let iconLabel = NSTextField(labelWithString: "Icon")
-    iconLabel.font = .systemFont(ofSize: 11, weight: .medium)
-    iconLabel.textColor = ClipboardShelfStyle.secondaryText
+    let colorLabel = NativeUI.label("Color", font: .systemFont(ofSize: 11, weight: .medium), color: ClipboardShelfStyle.secondaryText)
+    let iconLabel = NativeUI.label("Icon", font: .systemFont(ofSize: 11, weight: .medium), color: ClipboardShelfStyle.secondaryText)
 
     message.font = .systemFont(ofSize: 11)
     message.textColor = .systemRed
@@ -143,11 +129,8 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
   func show(relativeTo parent: NSWindow, anchoredTo anchor: NSView?) {
     parentWindow = parent
     anchorView = anchor
-    window.level = NSWindow.Level(rawValue: parent.level.rawValue + 1)
-    window.collectionBehavior = parent.collectionBehavior
-    window.sharingType = parent.sharingType
     positionNearAnchor()
-    parent.addChildWindow(window, ordered: .above)
+    window.attachToShelf(parent)
     window.makeKeyAndOrderFront(nil)
     window.makeFirstResponder(input)
   }
@@ -232,8 +215,7 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
   @objc func dismiss() {
     guard !isFinished else { return }
     isFinished = true
-    parentWindow?.removeChildWindow(window)
-    window.orderOut(nil)
+    window.detachFromShelf()
     onFinish()
   }
 

@@ -24,33 +24,45 @@ enabling launch at login or granting Accessibility permission.
 | Preview | Space |
 | Paste plain text | Shift-Return |
 | Copy selected clips | Command-C |
-| Quick paste | Command-1 through Command-9 |
+| Quick paste / quick paste plain text | Command-1–9 / Shift-Command-1–9 |
 | New text clip | Command-N |
+| Open selected clip / show in All clips | Command-O / Command-G |
 | Edit / rename | Command-E / Command-R |
 | Pin / new Pinboard | Command-P / Shift-Command-N |
-| Select several | Command-click or Shift-click |
+| Select several / select all | Command-click, Shift-click, Shift-arrow / Command-A |
+| First / last clip; page through clips | Home / End; Page Up / Page Down |
+| Previous / next destination | Command-Left / Command-Right |
+| Pause / resume capture | Command-T |
 | Undo deletion | Command-Z |
 | Settings | Command-comma |
 
-The destination row above the vertical list opens Pinned and your Pinboards.
-Choose New Pinboard in that menu, or press Shift-Command-N. Use Add to Pinboard
-in a clip's context menu to organize it. The destination menu also offers editing,
-exporting, and deleting the selected Pinboard. Pinboards retain their contents when
-ordinary history expires. The top pencil button creates a text clip; More Actions
-includes Settings, a shortcut/search guide, and confirmed history cleanup that keeps saved clips.
+The destination icons above the vertical grid open All clips, Pinned, and your
+Pinboards. The plus button or Shift-Command-N creates a Pinboard. Right-click a
+clip for Add to Pinboard, original-format and plain-text copy/paste, selection
+transfer, Open, Reveal in Finder, Quick Look, Rename, editing, image rotation/OCR,
+capture exclusions, pinning, and deletion. Available commands depend on its type.
+Drag clips into a Pinboard or another app. Right-click a Pinboard icon to edit its
+name/color/icon, export it, or delete it. Deleting a Pinboard removes its clips
+after confirmation. Pinned and Pinboard clips survive ordinary history expiry.
+
+The pencil button toggles the text composer. The trash button offers 1 day, 1 week,
+and All time cleanup; these keep pinned and Pinboard clips. Undo restores the most
+recent clip deletion. Settings > Data has a separate confirmed full-data reset.
+The current system clipboard is never cleared by history cleanup.
 
 Search supports `app:Safari`, `type:image,pdf`, `pinboard:"Work"`, and
-`date:2026-09-21`, combined with ordinary search words.
+`date:2026-09-21`, combined with ordinary words. Destination, content type, and
+sorting work independently. The content icons sit in the attached left notch;
+the filter button offers dates and source apps, and the sort button toggles newest
+and most used first. Reset clears search and filters. VoiceOver reports the visible
+and total clip counts on this control.
 
-The destination menu, Content type, and sorting work independently. The filter button
-offers sorting, source-app, and date choices. Clear filters resets the search and scope. The bottom of the shelf
-shows the effective Copy/Paste action, its outcome, Undo after deletion, and capture
-pause/resume. Settings > General offers three shelf widths, larger text, and left/right placement. The vertical shelf is the default; horizontal browsing remains an optional layout.
-
-If a copy seems missing, check the result count: a filtered view shows how many clips
-are visible out of the full history. New copies hidden by search, content type, or
-destination show a **Show new** button that clears filters and selects the latest
-copy. Hover over Listening for the latest capture detail. Paused capture and errors appear in the footer.
+New copies hidden by your current scope show a **Show new** notice; this clears
+filters and selects the latest copy. Right-click the menu-bar icon for capture
+status and pause/resume, including timed pauses. Settings > Capture also controls
+capture. Settings > General offers three shelf sizes, larger text, left/right
+placement, optional horizontal browsing, and optional copy/paste sounds. The
+vertical shelf is the default; neither layout has a bottom action bar.
 
 Text clips open in an attached editor. Command-Return saves; Escape cancels.
 An unsuccessful save keeps your draft in the editor. Preview with Space; Escape or the
@@ -71,6 +83,6 @@ its preview. The shelf stays clear of the Dock and remembers your paste destinat
   by macOS. Do not disable Gatekeeper; use a Developer ID-signed, notarized release
   for ordinary distribution.
 
-Settings > Data can export/import history and Pinboards. The explicit full-data
-reset there removes saved clips too, after confirmation. The current system
-clipboard is never cleared as part of history cleanup.
+Settings > Data exports/imports archives containing history, Pinboards, and managed
+attachments, and offers optional iCloud backup/restore. Export individual Pinboards
+from their context menus. See [security notes](SECURITY.md) for storage and archive details.

@@ -22,9 +22,8 @@ class ClipboardAuxiliaryWindowController: NSWindowController, NSWindowDelegate {
     if let previous = shelfWindow, previous !== parent { previous.removeChildWindow(window) }
     shelfWindow = parent
     if let parent {
-      window.level = parent.level
       window.setFrame(LinkPreviewWindowController.previewFrame(relativeTo: parent), display: false)
-      parent.addChildWindow(window, ordered: .above)
+      window.attachToShelf(parent, levelOffset: 0, behavior: ClipboardPanelController.panelCollectionBehavior)
     }
     window.makeKeyAndOrderFront(nil)
   }

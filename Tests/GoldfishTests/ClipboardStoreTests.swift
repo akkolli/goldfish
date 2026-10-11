@@ -1,7 +1,8 @@
-import CryptoKit
-import XCTest
-import Foundation
 import AppKit
+import CryptoKit
+import Foundation
+import XCTest
+
 @testable import Goldfish
 
 final class ClipboardStoreTests: IsolatedTestCase {
@@ -21,6 +22,17 @@ final class ClipboardStoreTests: IsolatedTestCase {
     defaults = nil
     baseURL = nil
     try super.tearDownWithError()
+  }
+
+  func testContentHashesKeepTheExistingSHA256Format() {
+    let store = makeStore(settings: makeSettings(maxHistory: 4))
+    for (text, expected) in [
+      ("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+      ("abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+    ] {
+      XCTAssertEqual(store.hashString(text), expected)
+      XCTAssertEqual(store.hashData(Data(text.utf8)), expected)
+    }
   }
 
   func testUpsertMovesDuplicateToFrontAndPersists() throws {
@@ -51,9 +63,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let store = makeStore(settings: settings)
     let start = Date()
 
-    (0...50).forEach { i in
-      store.upsert(makeItem("item-\(i)", displayText: "\(i)", created: start.addingTimeInterval(-Double(i))))
-    }
+    (0...50).forEach { i in store.upsert(makeItem("item-\(i)", displayText: "\(i)", created: start.addingTimeInterval(-Double(i)))) }
     store.flushPersistenceForTesting()
 
     XCTAssertEqual(store.items.count, 50)
@@ -164,10 +174,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let settings = makeSettings(maxHistory: 50)
     var resetCount = 0
     let keyData = Data(repeating: 7, count: 32)
-    let encryptionService = ClipboardEncryptionService(
-      keyProvider: { SymmetricKey(data: keyData) },
-      resetProvider: { resetCount += 1 }
-    )
+    let encryptionService = ClipboardEncryptionService(keyProvider: { SymmetricKey(data: keyData) }, resetProvider: { resetCount += 1 })
     let store = makeStore(settings: settings, encryptionService: encryptionService)
 
     store.upsert(makeItem("first", displayText: "First", created: Date()))
@@ -196,9 +203,10 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let item = testItem(
       displayText: "Displayed secret \(UUID().uuidString)", payload: "Payload secret \(UUID().uuidString)",
       payloadHash: "Hash secret \(UUID().uuidString)", createdAt: Date(timeIntervalSince1970: 100),
-      sourceApp: "Secret app \(UUID().uuidString)",
-      sourceAppBundleId: "com.example.secret.\(UUID().uuidString)",
-      ocrText: "OCR secret \(UUID().uuidString)", collectionName: "Collection secret \(UUID().uuidString)",
+      lastUsedAt: Date(timeIntervalSince1970: 120), useCount: 17, sourceApp: "Secret app \(UUID().uuidString)",
+      imagePath: "Image secret \(UUID().uuidString)", thumbnailPath: "Thumbnail secret \(UUID().uuidString)", isPinned: true,
+      sourceAppBundleId: "com.example.secret.\(UUID().uuidString)", ocrText: "OCR secret \(UUID().uuidString)",
+      collectionName: "Collection secret \(UUID().uuidString)", customTitle: "Title secret \(UUID().uuidString)",
       sourceDeviceName: "Device secret \(UUID().uuidString)")
 
     store.upsert(item)
@@ -206,26 +214,15 @@ final class ClipboardStoreTests: IsolatedTestCase {
 
     let rawDatabaseText = try databaseText()
     XCTAssertTrue(rawDatabaseText.contains(ClipboardEncryptionService.marker))
-    XCTAssertFalse(rawDatabaseText.contains(item.displayText))
-    XCTAssertFalse(rawDatabaseText.contains(item.payload))
-    XCTAssertFalse(rawDatabaseText.contains(item.payloadHash))
-    XCTAssertFalse(rawDatabaseText.contains(item.sourceApp!))
-    XCTAssertFalse(rawDatabaseText.contains(item.sourceAppBundleId!))
-    XCTAssertFalse(rawDatabaseText.contains(item.ocrText!))
-    XCTAssertFalse(rawDatabaseText.contains(item.collectionName!))
-    XCTAssertFalse(rawDatabaseText.contains(item.sourceDeviceName!))
+    for value in [
+      item.displayText, item.payload, item.payloadHash, item.sourceApp!, item.sourceAppBundleId!, item.imagePath!, item.thumbnailPath!,
+      item.ocrText!, item.collectionName!, item.customTitle!, item.sourceDeviceName!,
+    ] { XCTAssertFalse(rawDatabaseText.contains(value), "Every textual field must be encrypted: \(value)") }
 
     let restored = makeStore(settings: settings, encryptionService: encryptionService)
     restored.flushPersistenceForTesting()
 
-    XCTAssertEqual(restored.items.first?.displayText, item.displayText)
-    XCTAssertEqual(restored.items.first?.payload, item.payload)
-    XCTAssertEqual(restored.items.first?.payloadHash, item.payloadHash)
-    XCTAssertEqual(restored.items.first?.sourceApp, item.sourceApp)
-    XCTAssertEqual(restored.items.first?.sourceAppBundleId, item.sourceAppBundleId)
-    XCTAssertEqual(restored.items.first?.ocrText, item.ocrText)
-    XCTAssertEqual(restored.items.first?.collectionName, item.collectionName)
-    XCTAssertEqual(restored.items.first?.sourceDeviceName, item.sourceDeviceName)
+    XCTAssertEqual(restored.items, [item], "Every field must survive an encrypted relaunch")
   }
 
   func testWrongEncryptionKeyReportsLoadWarningWithoutDeletingDatabase() throws {
@@ -241,10 +238,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
 
     XCTAssertTrue(reader.items.isEmpty)
     XCTAssertNotNil(reader.loadWarningMessage)
-    XCTAssertEqual(
-      try fileSize(baseURL.appendingPathComponent("history.sqlite")),
-      databaseSizeBeforeReload
-    )
+    XCTAssertEqual(try fileSize(baseURL.appendingPathComponent("history.sqlite")), databaseSizeBeforeReload)
   }
 
   func testImportCannotReplaceUnreadableHistory() throws {
@@ -285,8 +279,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let item = testItem(
       displayText: "Legacy display \(UUID().uuidString)", payload: "Legacy payload \(UUID().uuidString)",
       payloadHash: "Legacy hash \(UUID().uuidString)", createdAt: Date(timeIntervalSince1970: 200),
-      sourceApp: "Legacy source \(UUID().uuidString)",
-      sourceAppBundleId: "com.example.legacy.\(UUID().uuidString)",
+      sourceApp: "Legacy source \(UUID().uuidString)", sourceAppBundleId: "com.example.legacy.\(UUID().uuidString)",
       ocrText: "Legacy OCR \(UUID().uuidString)", collectionName: "Legacy collection \(UUID().uuidString)",
       sourceDeviceName: "Legacy device \(UUID().uuidString)")
 
@@ -342,12 +335,8 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let store = makeStore(settings: settings)
     let cachedImage = try XCTUnwrap(cacheService.cacheImage(testImage(color: .systemBlue), id: UUID()))
     let item = makeImageItem(
-      fullPath: cachedImage.full,
-      thumbPath: cachedImage.thumb,
-      hash: "undo-image",
-      ocrText: "undo searchable text",
-      created: Date(timeIntervalSince1970: 10)
-    )
+      fullPath: cachedImage.full, thumbPath: cachedImage.thumb, hash: "undo-image", ocrText: "undo searchable text",
+      created: Date(timeIntervalSince1970: 10))
     store.upsert(item)
     store.flushPersistenceForTesting()
 
@@ -393,21 +382,13 @@ final class ClipboardStoreTests: IsolatedTestCase {
     note.customTitle = "Migration Note"
     note.sourceDeviceName = "Studio Mac"
     var image = makeImageItem(
-      fullPath: cachedImage.full,
-      thumbPath: cachedImage.thumb,
-      hash: "archive-image",
-      ocrText: "blue archive image",
-      created: created.addingTimeInterval(1)
-    )
+      fullPath: cachedImage.full, thumbPath: cachedImage.thumb, hash: "archive-image", ocrText: "blue archive image",
+      created: created.addingTimeInterval(1))
     image.isPinned = true
     image.collectionName = "Client Work"
     image.customTitle = "Launch Screenshot"
     image.sourceDeviceName = "MacBook Pro"
-    var pdf = makePDFItem(
-      path: sourcePDFPath,
-      hash: "archive-pdf",
-      created: created.addingTimeInterval(2)
-    )
+    var pdf = makePDFItem(path: sourcePDFPath, hash: "archive-pdf", created: created.addingTimeInterval(2))
     pdf.collectionName = "Research"
     pdf.sourceDeviceName = "Design Mac"
 
@@ -423,8 +404,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     XCTAssertEqual(exportSummary.sidecarCount, 3)
     XCTAssertEqual(try testPermissions(archiveURL), 0o600)
 
-    let destinationBaseURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("clipboredtests", isDirectory: true)
+    let destinationBaseURL = FileManager.default.temporaryDirectory.appendingPathComponent("clipboredtests", isDirectory: true)
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: destinationBaseURL, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: destinationBaseURL) }
@@ -437,16 +417,9 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let destinationSettings = SettingsModel(defaults: destinationDefaults)
     destinationSettings.maxHistoryItems = 50
     destinationSettings.historyRetention = .forever
-    let destinationCache = ClipboardCacheService(
-      baseURL: destinationBaseURL,
-      encryptionService: testEncryption()
-    )
+    let destinationCache = ClipboardCacheService(baseURL: destinationBaseURL, encryptionService: testEncryption())
     let destinationStore = ClipboardStore(
-      settings: destinationSettings,
-      cacheService: destinationCache,
-      baseURL: destinationBaseURL,
-      encryptionService: testEncryption()
-    )
+      settings: destinationSettings, cacheService: destinationCache, baseURL: destinationBaseURL, encryptionService: testEncryption())
     destinationStore.upsert(makeItem("destination only", displayText: "Destination", created: created.addingTimeInterval(3)))
     destinationStore.flushPersistenceForTesting()
 
@@ -483,11 +456,7 @@ final class ClipboardStoreTests: IsolatedTestCase {
     XCTAssertEqual(destinationCache.data(for: importedPDF.payload), sourcePDFData)
 
     let reloaded = ClipboardStore(
-      settings: destinationSettings,
-      cacheService: destinationCache,
-      baseURL: destinationBaseURL,
-      encryptionService: testEncryption()
-    )
+      settings: destinationSettings, cacheService: destinationCache, baseURL: destinationBaseURL, encryptionService: testEncryption())
     reloaded.flushPersistenceForTesting()
     XCTAssertEqual(reloaded.items.count, 4)
     XCTAssertTrue(reloaded.items.contains { $0.id == image.id && $0.collectionName == "Client Work" })
@@ -501,12 +470,8 @@ final class ClipboardStoreTests: IsolatedTestCase {
     try handle.truncate(atOffset: UInt64(AppConfiguration.maxPortableArchiveBytes + 1))
     try handle.close()
 
-    XCTAssertThrowsError(
-      try ClipboardArchiveService().importArchive(from: archiveURL, cacheService: cacheService)
-    ) { error in
-      guard case ClipboardArchiveError.archiveTooLarge = error else {
-        return XCTFail("Expected archiveTooLarge, got \(error)")
-      }
+    XCTAssertThrowsError(try ClipboardArchiveService().importArchive(from: archiveURL, cacheService: cacheService)) { error in
+      guard case ClipboardArchiveError.archiveTooLarge = error else { return XCTFail("Expected archiveTooLarge, got \(error)") }
     }
   }
 
@@ -537,16 +502,9 @@ final class ClipboardStoreTests: IsolatedTestCase {
     destinationSettings.maxHistoryItems = 50
     destinationSettings.historyRetention = .forever
     let destinationBaseURL = baseURL.appendingPathComponent("pinboard-destination", isDirectory: true)
-    let destinationCache = ClipboardCacheService(
-      baseURL: destinationBaseURL,
-      encryptionService: testEncryption()
-    )
+    let destinationCache = ClipboardCacheService(baseURL: destinationBaseURL, encryptionService: testEncryption())
     let destinationStore = ClipboardStore(
-      settings: destinationSettings,
-      cacheService: destinationCache,
-      baseURL: destinationBaseURL,
-      encryptionService: testEncryption()
-    )
+      settings: destinationSettings, cacheService: destinationCache, baseURL: destinationBaseURL, encryptionService: testEncryption())
 
     let importSummary = try destinationStore.importArchive(from: archiveURL)
 
@@ -575,11 +533,8 @@ final class ClipboardStoreTests: IsolatedTestCase {
     let destinationSettings = SettingsModel(defaults: destinationDefaults)
     let destinationBaseURL = baseURL.appendingPathComponent("empty-pinboard-destination", isDirectory: true)
     let destinationStore = ClipboardStore(
-      settings: destinationSettings,
-      cacheService: ClipboardCacheService(baseURL: destinationBaseURL, encryptionService: testEncryption()),
-      baseURL: destinationBaseURL,
-      encryptionService: testEncryption()
-    )
+      settings: destinationSettings, cacheService: ClipboardCacheService(baseURL: destinationBaseURL, encryptionService: testEncryption()),
+      baseURL: destinationBaseURL, encryptionService: testEncryption())
 
     let importSummary = try destinationStore.importArchive(from: archiveURL)
 
@@ -599,17 +554,10 @@ final class ClipboardStoreTests: IsolatedTestCase {
     return settings
   }
 
-  private func makeStore(settings: SettingsModel) -> ClipboardStore {
-    makeStore(settings: settings, encryptionService: testEncryption())
-  }
+  private func makeStore(settings: SettingsModel) -> ClipboardStore { makeStore(settings: settings, encryptionService: testEncryption()) }
 
   private func makeStore(settings: SettingsModel, encryptionService: ClipboardEncryptionService) -> ClipboardStore {
-    ClipboardStore(
-      settings: settings,
-      cacheService: cacheService,
-      baseURL: baseURL,
-      encryptionService: encryptionService
-    )
+    ClipboardStore(settings: settings, cacheService: cacheService, baseURL: baseURL, encryptionService: encryptionService)
   }
 
   private func makeItem(_ payload: String, displayText: String, created: Date) -> ClipboardItem {
@@ -623,14 +571,11 @@ final class ClipboardStoreTests: IsolatedTestCase {
 
   private func makeImageItem(fullPath: String, thumbPath: String, hash: String, ocrText: String?, created: Date) -> ClipboardItem {
     testItem(
-      kind: .image, displayText: "Image", payload: fullPath, payloadHash: hash, createdAt: created,
-      sourceApp: "Preview", imagePath: fullPath, thumbnailPath: thumbPath,
-      sourceAppBundleId: "com.apple.Preview", ocrText: ocrText)
+      kind: .image, displayText: "Image", payload: fullPath, payloadHash: hash, createdAt: created, sourceApp: "Preview",
+      imagePath: fullPath, thumbnailPath: thumbPath, sourceAppBundleId: "com.apple.Preview", ocrText: ocrText)
   }
 
-  private func settingsHash(for payload: String) -> String {
-    payload
-  }
+  private func settingsHash(for payload: String) -> String { payload }
 
   private func fileSize(_ url: URL) throws -> Int64 {
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)

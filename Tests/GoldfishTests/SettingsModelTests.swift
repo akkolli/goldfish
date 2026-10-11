@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Goldfish
 
 final class SettingsModelTests: IsolatedTestCase {
@@ -176,15 +177,12 @@ final class SettingsModelTests: IsolatedTestCase {
     settings.excludeSensitive = true
     settings.clearHistoryOnQuit = true
 
-    XCTAssertEqual(changes, [
-      .defaultSortMode,
-      .includeImageTextInSearch,
-      .pruneDuplicates,
-      .ignoredItemKinds,
-      .keepFirstImage,
-      .excludeSensitive,
-      .clearHistoryOnQuit
-    ])
+    XCTAssertEqual(
+      changes,
+      [
+        .defaultSortMode, .includeImageTextInSearch, .pruneDuplicates, .ignoredItemKinds, .keepFirstImage, .excludeSensitive,
+        .clearHistoryOnQuit,
+      ])
 
     let restored = SettingsModel(defaults: defaults)
     XCTAssertEqual(restored.defaultSortMode, .links)
@@ -200,19 +198,14 @@ final class SettingsModelTests: IsolatedTestCase {
     let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     let allVisibleKindRawValues = Self.visibleItemKinds.map(\.rawValue)
-    let expectedIgnoredKindRawValues = allVisibleKindRawValues.filter {
-      $0 != ClipboardItemKind.text.rawValue
-    }
+    let expectedIgnoredKindRawValues = allVisibleKindRawValues.filter { $0 != ClipboardItemKind.text.rawValue }
     var changes: [SettingsModel.Change] = []
     settings.observe { changes.append($0) }
 
     settings.ignoredItemKindsRaw = allVisibleKindRawValues
 
     XCTAssertEqual(settings.ignoredItemKindsRaw, expectedIgnoredKindRawValues)
-    XCTAssertEqual(
-      defaults.object(forKey: SettingsModel.Keys.ignoredItemKinds) as? [Int],
-      expectedIgnoredKindRawValues
-    )
+    XCTAssertEqual(defaults.object(forKey: SettingsModel.Keys.ignoredItemKinds) as? [Int], expectedIgnoredKindRawValues)
     XCTAssertEqual(changes, [.ignoredItemKinds])
 
     let restored = SettingsModel(defaults: defaults)
@@ -222,18 +215,13 @@ final class SettingsModelTests: IsolatedTestCase {
   func testStoredIgnoredItemKindsCannotDisableEveryVisibleKind() {
     let defaults = makeTestDefaults()
     let allVisibleKindRawValues = Self.visibleItemKinds.map(\.rawValue)
-    let expectedIgnoredKindRawValues = allVisibleKindRawValues.filter {
-      $0 != ClipboardItemKind.text.rawValue
-    }
+    let expectedIgnoredKindRawValues = allVisibleKindRawValues.filter { $0 != ClipboardItemKind.text.rawValue }
     defaults.set(allVisibleKindRawValues, forKey: SettingsModel.Keys.ignoredItemKinds)
 
     let settings = SettingsModel(defaults: defaults)
 
     XCTAssertEqual(settings.ignoredItemKindsRaw, expectedIgnoredKindRawValues)
-    XCTAssertEqual(
-      defaults.object(forKey: SettingsModel.Keys.ignoredItemKinds) as? [Int],
-      expectedIgnoredKindRawValues
-    )
+    XCTAssertEqual(defaults.object(forKey: SettingsModel.Keys.ignoredItemKinds) as? [Int], expectedIgnoredKindRawValues)
   }
 
   func testStoredLimitsAreClampedAndPersisted() {
@@ -242,15 +230,15 @@ final class SettingsModelTests: IsolatedTestCase {
       (2048 * 1024 * 1024, AppConfiguration.maxCacheMaxBytes),
     ]
     assertStoredLimits(\.imageCacheMaxBytes, key: SettingsModel.Keys.imageCacheMaxBytes, cases: cacheCases)
-    assertStoredLimits(\.maxHistoryItems, key: SettingsModel.Keys.maxHistoryItems, cases: [
-      (0, AppConfiguration.defaultHistoryLength), (1, AppConfiguration.minHistoryLength),
-      (100_000, AppConfiguration.maxHistoryLength),
-    ])
+    assertStoredLimits(
+      \.maxHistoryItems, key: SettingsModel.Keys.maxHistoryItems,
+      cases: [
+        (0, AppConfiguration.defaultHistoryLength), (1, AppConfiguration.minHistoryLength), (100_000, AppConfiguration.maxHistoryLength),
+      ])
   }
 
   private func assertStoredLimits<Value: BinaryInteger>(
-    _ property: KeyPath<SettingsModel, Value>, key: String, cases: [(Value, Value)],
-    file: StaticString = #filePath, line: UInt = #line
+    _ property: KeyPath<SettingsModel, Value>, key: String, cases: [(Value, Value)], file: StaticString = #filePath, line: UInt = #line
   ) {
     for (input, expected) in cases {
       let defaults = makeTestDefaults()
@@ -275,12 +263,7 @@ final class SettingsModelTests: IsolatedTestCase {
     XCTAssertEqual(defaults.integer(forKey: SettingsModel.Keys.maxHistoryItems), AppConfiguration.maxHistoryLength)
     XCTAssertEqual(settings.imageCacheMaxBytes, AppConfiguration.maxCacheMaxBytes)
     XCTAssertEqual(Int64(defaults.integer(forKey: SettingsModel.Keys.imageCacheMaxBytes)), AppConfiguration.maxCacheMaxBytes)
-    XCTAssertEqual(changes, [
-      .maxHistoryItems,
-      .maxHistoryItems,
-      .imageCacheMaxBytes,
-      .imageCacheMaxBytes
-    ])
+    XCTAssertEqual(changes, [.maxHistoryItems, .maxHistoryItems, .imageCacheMaxBytes, .imageCacheMaxBytes])
   }
 
   func testHistoryRetentionDefaultsToOneMonthAndPersists() {
@@ -328,8 +311,7 @@ final class SettingsModelTests: IsolatedTestCase {
     settings.ensureCollection(named: "Research Stack", colorHex: "#0A9EB8", icon: "book.closed.fill")
     settings.ensureCollection(named: "Client Work", colorHex: "#FF3355")
 
-    let updatedName = settings.updateCollection(named: "research stack", to: "Product Research",
-      colorHex: "#3366FF", icon: "star.fill")
+    let updatedName = settings.updateCollection(named: "research stack", to: "Product Research", colorHex: "#3366FF", icon: "star.fill")
 
     XCTAssertEqual(updatedName, "Product Research")
     XCTAssertEqual(settings.customCollectionNames, ["Product Research", "Client Work"])
@@ -349,16 +331,31 @@ final class SettingsModelTests: IsolatedTestCase {
     XCTAssertEqual(restored.collectionIcon(forCollectionNamed: "Product Research"), "star.fill")
   }
 
-  private static let visibleItemKinds: [ClipboardItemKind] = [
-    .text,
-    .code,
-    .url,
-    .image,
-    .color,
-    .audio,
-    .video,
-    .richText,
-    .pdf,
-    .file
-  ]
+  func testCollectionRenameAndMergePreserveMetadataAndCanonicalKeys() {
+    for (newName, expectedNames) in [("research", ["research", "Client"]), ("CLIENT", ["Client"]), ("Fresh", ["Fresh", "Client"])] {
+      let defaults = makeTestDefaults()
+      let settings = SettingsModel(defaults: defaults)
+      settings.ensureCollection(named: "Research", colorHex: "#3366FF", icon: "star.fill")
+      settings.ensureCollection(named: "Client", colorHex: "#FF3355", icon: "book.closed.fill")
+      var changes: [SettingsModel.Change] = []
+      settings.observe { changes.append($0) }
+      let canonical = expectedNames[0]
+      XCTAssertEqual(settings.updateCollection(named: "RESEARCH", to: newName, colorHex: "invalid", icon: "invalid"), canonical)
+      XCTAssertEqual(settings.customCollectionNames, expectedNames)
+      XCTAssertEqual(settings.collectionColorHexes[canonical], "#3366FF")
+      XCTAssertEqual(settings.collectionIcons[canonical], "star.fill")
+      XCTAssertNil(settings.collectionColorHexes["Research"])
+      XCTAssertNil(settings.collectionIcons["Research"])
+      XCTAssertEqual(changes, [.collections])
+      let restored = SettingsModel(defaults: defaults)
+      XCTAssertEqual(restored.customCollectionNames, expectedNames)
+      XCTAssertEqual(restored.collectionColorHexes, settings.collectionColorHexes)
+      XCTAssertEqual(restored.collectionIcons, settings.collectionIcons)
+      restored.deleteCollection(named: canonical.uppercased())
+      XCTAssertNil(restored.collectionColorHex(forCollectionNamed: canonical))
+      XCTAssertNil(restored.collectionIcon(forCollectionNamed: canonical))
+    }
+  }
+
+  private static let visibleItemKinds: [ClipboardItemKind] = [.text, .code, .url, .image, .color, .audio, .video, .richText, .pdf, .file]
 }

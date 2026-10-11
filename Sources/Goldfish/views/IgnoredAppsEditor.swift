@@ -31,9 +31,7 @@ final class IgnoredAppsEditor: NSStackView, NSTableViewDataSource, NSTableViewDe
     removeButton.target = self
     removeButton.action = #selector(removeRules)
     for button in [add, edit, removeButton] { button.bezelStyle = .rounded }
-    let actions = NSStackView(views: [add, removeButton, NSView(), edit])
-    actions.orientation = .horizontal
-    actions.spacing = 8
+    let actions = NativeUI.stack([add, removeButton, NSView(), edit], axis: .horizontal, spacing: 8)
     actions.arrangedSubviews[2].setContentHuggingPriority(.defaultLow, for: .horizontal)
     for view in [scroll, actions] {
       addArrangedSubview(view)
@@ -48,17 +46,14 @@ final class IgnoredAppsEditor: NSStackView, NSTableViewDataSource, NSTableViewDe
     let rule = rules[row]
     let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: rule)
     let name = url?.deletingPathExtension().lastPathComponent ?? rule
-    let label = NSTextField(labelWithString: name)
-    label.lineBreakMode = .byTruncatingTail
+    let label = NativeUI.label(name, lineBreak: .byTruncatingTail)
     label.toolTip = rule
     let icon = NSImageView(
       image: url.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)
         ?? NSImage())
     icon.widthAnchor.constraint(equalToConstant: 18).isActive = true
     icon.heightAnchor.constraint(equalToConstant: 18).isActive = true
-    let rowView = NSStackView(views: [icon, label])
-    rowView.orientation = .horizontal
-    rowView.spacing = 7
+    let rowView = NativeUI.stack([icon, label], axis: .horizontal, spacing: 7)
     rowView.setAccessibilityLabel(name == rule ? "Matching rule: \(rule)" : "\(name), \(rule)")
     return rowView
   }

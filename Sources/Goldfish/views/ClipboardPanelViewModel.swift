@@ -21,6 +21,9 @@ struct ClipboardCollectionCountSummary {
 }
 
 final class ClipboardPanelViewModel {
+  /// Consumers read the completed model state; events never carry stale snapshots.
+  enum Change: Equatable { case items, search, selection, status, sort, collections, capture }
+  var onChange: ((Change) -> Void)?
 
   private struct VisibleItemsCacheKey: Hashable {
     let query: String
@@ -42,13 +45,6 @@ final class ClipboardPanelViewModel {
     let itemID: UUID
     let kindRawValue: Int
     let source: String?
-  }
-
-  private enum VisibleItemsSortOrdering {
-    case recency
-    case useCount
-    case lastUsed
-    case original
   }
 
   private enum TransferIntent {
@@ -76,7 +72,7 @@ final class ClipboardPanelViewModel {
       visibleItemByID = nextItemByID
       visibleIndexByID = nextIndexByID
       guard !isRecomputingVisibleItems else { return }
-      notifyVisibleItemsChanged()
+      publish(.items)
     }
   }
   private var shelfState: ClipboardShelfState
@@ -104,24 +100,24 @@ final class ClipboardPanelViewModel {
     {
       recomputeVisibleItems()
     }
-    if searchChanged { notifyMain { self.onSearchTextChanged?(self.searchText) } }
-    if sortChanged { onSortModeChanged?(sortMode) }
-    if collectionChanged { onCollectionsChanged?() }
+    if searchChanged { publish(.search) }
+    if sortChanged { publish(.sort) }
+    if collectionChanged { publish(.collections) }
   }
   var selectedIndex: Int = 0 {
     didSet {
       guard oldValue != selectedIndex else { return }
-      notifyMain { self.onSelectedIndexChanged?(self.selectedIndex) }
+      publish(.selection)
     }
   }
   private(set) var selectedItemIDs: [UUID] = [] {
     didSet {
       guard oldValue != selectedItemIDs else { return }
       selectedItemIDSet = Set(selectedItemIDs)
-      notifyMain { self.onSelectedItemsChanged?() }
+      publish(.selection)
     }
   }
-  private(set) var statusMessage: String = "" { didSet { notifyMain { self.onStatusMessageChanged?(self.statusMessage) } } }
+  private(set) var statusMessage: String = "" { didSet { publish(.status) } }
   var contentFilter: ClipboardSortMode? {
     get { shelfState.contentFilter }
     set { applyShelfAction(.content(newValue)) }
@@ -151,7 +147,7 @@ final class ClipboardPanelViewModel {
     guard visibleItemByID[item.id] == nil else { return }
     hiddenCaptureIDs.removeAll { $0 == item.id }
     hiddenCaptureIDs.append(item.id)
-    onCaptureStatusChanged?()
+    publish(.capture)
   }
 
   func showLatestHiddenCapture() {
@@ -230,14 +226,6 @@ final class ClipboardPanelViewModel {
 
   var targetApplicationProvider: () -> NSRunningApplication? = { nil }
   var willPasteToTarget: () -> Void = {}
-  var onVisibleItemsChanged: (([ClipboardItem]) -> Void)?
-  var onSearchTextChanged: ((String) -> Void)?
-  var onSelectedIndexChanged: ((Int) -> Void)?
-  var onSelectedItemsChanged: (() -> Void)?
-  var onStatusMessageChanged: ((String) -> Void)?
-  var onSortModeChanged: ((ClipboardSortMode) -> Void)?
-  var onCollectionsChanged: (() -> Void)?
-  var onCaptureStatusChanged: (() -> Void)?
 
   init(
     pasteboard: NSPasteboard = .general, store: ClipboardStore, settings: SettingsModel, cacheService: ClipboardCacheService,
@@ -266,13 +254,13 @@ final class ClipboardPanelViewModel {
     settings.observe { [weak self] change in
       self?.notifyMain {
         switch change {
-        case .captureStatus, .pauseCapture: self?.onCaptureStatusChanged?()
+        case .captureStatus, .pauseCapture: self?.publish(.capture)
         case .other: self?.recomputeVisibleItems()
         case .collections:
           guard let self else { return }
           self.collectionNamesCache = nil
           guard !self.isApplyingLocalCollectionMutation else { return }
-          self.onCollectionsChanged?()
+          self.publish(.collections)
         case .defaultSortMode:
           guard let self else { return }
           self.sortMode = self.settings.defaultSortMode
@@ -351,7 +339,7 @@ final class ClipboardPanelViewModel {
 
     for indexedItem in indexedItemsMatchingSearch(query) {
       let item = indexedItem.item
-      incrementSortModeCounts(for: item, counts: &sortModeCounts)
+      for mode in ClipboardSortMode.allCases where mode.includes(item) { sortModeCounts[mode.rawValue, default: 0] += 1 }
       if let collectionName = ClipboardCollectionDefaults.normalizedName(item.collectionName) {
         collectionCounts[collectionName.lowercased(), default: 0] += 1
       }
@@ -426,7 +414,7 @@ final class ClipboardPanelViewModel {
     guard visibleItems.indices.contains(index) else { return }
     let previousIndex = selectedIndex
     setIndexBasedSelection(at: index)
-    if previousIndex == index { notifyMain { self.onSelectedIndexChanged?(self.selectedIndex) } }
+    if previousIndex == index { publish(.selection) }
   }
 
   func moveSelection(_ delta: Int) {
@@ -448,9 +436,34 @@ final class ClipboardPanelViewModel {
     selectedItemID = activeItem.id
     selectionAnchorItemID = activeItem.id
     selectedItemIDs = visibleItems.map(\.id)
-    if selectedIndex == activeIndex { notifyMain { self.onSelectedIndexChanged?(self.selectedIndex) } } else { selectedIndex = activeIndex }
+    if selectedIndex == activeIndex { publish(.selection) } else { selectedIndex = activeIndex }
     let noun = visibleItems.count == 1 ? "clip" : "clips"
     statusMessage = "Selected \(visibleItems.count) \(noun)"
+  }
+
+  /// Returns false for commands that need a view, editor, or window.
+  @discardableResult func performCommand(_ command: ClipboardCardCommand) -> Bool {
+    switch command {
+    case .paste: pasteSelected()
+    case .copy: copySelected()
+    case .pastePlainText: pasteSelectedPlainText()
+    case .copyPlainText: copySelectedPlainText()
+    case .pasteSelectionText: pasteSelectedItemsAsText()
+    case .copySelectionText: copySelectedItemsAsText()
+    case .rotateImage: rotateSelectedImageClockwise()
+    case .extractImageText: extractTextFromSelectedImage()
+    case .open: openSelected()
+    case .reveal: revealSelected()
+    case .togglePin: togglePinSelected()
+    case .assignToCollection(let name): assignSelected(to: name)
+    case .ignoreSourceApp: ignoreSelectedSourceApp()
+    case .ignoreKind: ignoreSelectedKind()
+    case .delete: deleteSelected()
+    case .undoDelete: undoLastDelete()
+    case .adjacentCollection(let delta): selectAdjacentCollection(delta: delta)
+    default: return false
+    }
+    return true
   }
 
   func pasteSelected() { performSelectedTransfer(.paste) }
@@ -829,7 +842,7 @@ final class ClipboardPanelViewModel {
     collectionNamesCache = nil
     guard let normalizedName = createdName else { return }
     statusMessage = "Created \(normalizedName)"
-    if selectAfterCreate { selectCollection(named: normalizedName) } else { onCollectionsChanged?() }
+    if selectAfterCreate { selectCollection(named: normalizedName) } else { publish(.collections) }
   }
 
   func collectionColorHex(named name: String) -> String? { settings.collectionColorHex(forCollectionNamed: name) }
@@ -870,7 +883,7 @@ final class ClipboardPanelViewModel {
     collectionNamesCache = nil
     if selectionChanged { applyShelfAction(.collection(normalizedNewName)) }
     isDeferringLocalStoreRecompute = false
-    onCollectionsChanged?()
+    publish(.collections)
     recomputeVisibleItems()
     statusMessage = "Updated \(normalizedNewName)"
   }
@@ -891,7 +904,7 @@ final class ClipboardPanelViewModel {
     collectionNamesCache = nil
     if selectionChanged { applyShelfAction(.collection(nil)) }
     isDeferringLocalStoreRecompute = false
-    onCollectionsChanged?()
+    publish(.collections)
     recomputeVisibleItems()
     statusMessage = "Deleted \(normalizedName)"
   }
@@ -913,7 +926,7 @@ final class ClipboardPanelViewModel {
     defer {
       isRecomputingVisibleItems = false
       hiddenCaptureIDs.removeAll { itemByID[$0] == nil || visibleItemByID[$0] != nil }
-      notifyVisibleItemsChanged()
+      publish(.items)
     }
     let previousSelection = selectedItemID
     let previousSelectedIDs = selectedItemIDs
@@ -955,13 +968,11 @@ final class ClipboardPanelViewModel {
     if let selectionAnchorItemID, visibleIndexByID[selectionAnchorItemID] == nil { self.selectionAnchorItemID = selectedItemID }
   }
 
-  private func notifyVisibleItemsChanged() { notifyMain { self.onVisibleItemsChanged?(self.visibleItems) } }
-
   private func setActiveSelection(_ item: ClipboardItem, at index: Int, selectedIDs: [UUID], anchorID: UUID?) {
     selectedItemID = item.id
     selectionAnchorItemID = anchorID
     selectedItemIDs = uniqueIDs(selectedIDs)
-    if selectedIndex == index { notifyMain { self.onSelectedIndexChanged?(self.selectedIndex) } } else { selectedIndex = index }
+    if selectedIndex == index { publish(.selection) } else { selectedIndex = index }
   }
 
   private func setIndexBasedSelection(at index: Int) {
@@ -981,29 +992,6 @@ final class ClipboardPanelViewModel {
   private func rebuildItemIndexes() {
     itemByID = items.reduce(into: [:]) { index, item in if index[item.id] == nil { index[item.id] = item } }
     itemIDSet = Set(itemByID.keys)
-  }
-
-  private func incrementSortModeCounts(for item: ClipboardItem, counts: inout [Int: Int]) {
-    counts[ClipboardSortMode.mostRecent.rawValue, default: 0] += 1
-    counts[ClipboardSortMode.mostUsed.rawValue, default: 0] += 1
-    forEachCategorizingSortMode(including: item) { mode in counts[mode.rawValue, default: 0] += 1 }
-  }
-
-  private func forEachCategorizingSortMode(including item: ClipboardItem, _ body: (ClipboardSortMode) -> Void) {
-    switch item.kind {
-    case .image: body(.images)
-    case .url: body(.links)
-    case .text, .richText: body(.text)
-    case .code:
-      body(.text)
-      body(.code)
-    case .file, .pdf: body(.files)
-    case .audio: body(.audio)
-    case .color: body(.colors)
-    case .video: body(.videos)
-    case .unknown: break
-    }
-    if item.isPinned { body(.pinned) }
   }
 
   private func selectedItemsInSelectionOrder() -> [ClipboardItem] {
@@ -1104,19 +1092,10 @@ final class ClipboardPanelViewModel {
 
     let allIndexedItems = items.enumerated().map { IndexedClipboardItem(offset: $0.offset, item: $0.element) }
     let parsedQuery = searchEngine.parse(query)
-    let matchingItems: [IndexedClipboardItem]
-    if parsedQuery.isEmpty {
-      matchingItems = allIndexedItems
-    } else {
-      var matches: [IndexedClipboardItem] = []
-      matches.reserveCapacity(allIndexedItems.count)
-      for indexedItem in allIndexedItems {
-        if searchEngine.matches(indexedItem.item, query: parsedQuery, includeImageText: settings.includeImageTextInSearch) {
-          matches.append(indexedItem)
-        }
-      }
-      matchingItems = matches
-    }
+    let matchingItems =
+      parsedQuery.isEmpty
+      ? allIndexedItems
+      : allIndexedItems.filter { searchEngine.matches($0.item, query: parsedQuery, includeImageText: settings.includeImageTextInSearch) }
 
     searchMatchCache = SearchMatchCacheEntry(query: query, indexedItems: matchingItems)
     return matchingItems
@@ -1136,63 +1115,20 @@ final class ClipboardPanelViewModel {
   private func filterAndSortVisibleItems(_ indexedItems: [IndexedClipboardItem], sortMode: ClipboardSortMode, collectionName: String?)
     -> [ClipboardItem]
   {
-    let normalizedCollectionName = ClipboardCollectionDefaults.normalizedName(collectionName)
-    var filtered: [IndexedClipboardItem] = []
-    filtered.reserveCapacity(indexedItems.count)
-
-    for indexedItem in indexedItems {
-      let item = indexedItem.item
-      if let normalizedCollectionName {
-        guard item.collectionName?.caseInsensitiveCompare(normalizedCollectionName) == .orderedSame else { continue }
-      } else if !sortMode.includes(item) {
-        continue
-      }
-      filtered.append(indexedItem)
+    let collection = ClipboardCollectionDefaults.normalizedName(collectionName)
+    var filtered = indexedItems.filter { entry in
+      if let collection { return entry.item.collectionName?.caseInsensitiveCompare(collection) == .orderedSame }
+      return sortMode.includes(entry.item)
     }
-
-    sortIndexedItems(&filtered, ordering: sortOrdering(sortMode: sortMode, collectionName: collectionName))
+    let byUsage = collection == nil && sortMode == .mostUsed
+    let byCreation = collection != nil || sortMode == .mostRecent || sortMode == .pinned
+    filtered.sort { lhs, rhs in
+      if byUsage, lhs.item.useCount != rhs.item.useCount { return lhs.item.useCount > rhs.item.useCount }
+      if lhs.item.lastUsedAt != rhs.item.lastUsedAt { return lhs.item.lastUsedAt > rhs.item.lastUsedAt }
+      if byCreation, lhs.item.createdAt != rhs.item.createdAt { return lhs.item.createdAt > rhs.item.createdAt }
+      return lhs.offset < rhs.offset
+    }
     return filtered.map(\.item)
-  }
-
-  private func sortOrdering(sortMode: ClipboardSortMode, collectionName: String?) -> VisibleItemsSortOrdering {
-    if ClipboardCollectionDefaults.normalizedName(collectionName) != nil { return .recency }
-
-    switch sortMode {
-    case .mostRecent, .pinned: return .recency
-    case .mostUsed: return .useCount
-    case .images, .links, .text, .files, .audio, .videos, .colors, .code: return .lastUsed
-    @unknown default: return .original
-    }
-  }
-
-  private func sortIndexedItems(_ items: inout [IndexedClipboardItem], ordering: VisibleItemsSortOrdering) {
-    guard items.count > 1 else { return }
-    items.sort { lhs, rhs in
-      switch ordering {
-      case .recency: return recencyPrecedes(lhs, rhs)
-      case .useCount: return useCountPrecedes(lhs, rhs)
-      case .lastUsed: return lastUsedPrecedes(lhs, rhs)
-      case .original: return lhs.offset < rhs.offset
-      }
-    }
-  }
-
-  private func recencyPrecedes(_ lhs: IndexedClipboardItem, _ rhs: IndexedClipboardItem) -> Bool {
-    if lhs.item.lastUsedAt == rhs.item.lastUsedAt {
-      if lhs.item.createdAt == rhs.item.createdAt { return lhs.offset < rhs.offset }
-      return lhs.item.createdAt > rhs.item.createdAt
-    }
-    return lhs.item.lastUsedAt > rhs.item.lastUsedAt
-  }
-
-  private func useCountPrecedes(_ lhs: IndexedClipboardItem, _ rhs: IndexedClipboardItem) -> Bool {
-    if lhs.item.useCount == rhs.item.useCount { return lastUsedPrecedes(lhs, rhs) }
-    return lhs.item.useCount > rhs.item.useCount
-  }
-
-  private func lastUsedPrecedes(_ lhs: IndexedClipboardItem, _ rhs: IndexedClipboardItem) -> Bool {
-    if lhs.item.lastUsedAt == rhs.item.lastUsedAt { return lhs.offset < rhs.offset }
-    return lhs.item.lastUsedAt > rhs.item.lastUsedAt
   }
 
   private func assign(items: [ClipboardItem], to collectionName: String?) {
@@ -1211,7 +1147,7 @@ final class ClipboardPanelViewModel {
       isApplyingLocalCollectionMutation = false
     }
     recomputeVisibleItems()
-    onCollectionsChanged?()
+    publish(.collections)
     if let normalizedName {
       statusMessage = items.count == 1 ? "Added to \(normalizedName)" : "Added \(items.count) clips to \(normalizedName)"
     } else {
@@ -1254,6 +1190,8 @@ final class ClipboardPanelViewModel {
     let name = kind.displayName
     return name == name.uppercased() ? name : name.capitalized
   }
+
+  private func publish(_ change: Change) { notifyMain { self.onChange?(change) } }
 
   private func notifyMain(_ block: @escaping () -> Void) {
     if Thread.isMainThread { block() } else { DispatchQueue.main.async(execute: block) }

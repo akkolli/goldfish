@@ -249,12 +249,9 @@ final class ClipboardPanelView: NSView {
     }
     scrollView.onTiled = { [weak self] in self?.alignVerticalScrollerThumb() }
 
-    let headerStack = NSStackView(views: [shelfChrome, shelfControls.navigationView])
-    headerStack.orientation = .vertical
-    headerStack.alignment = .leading
-    headerStack.distribution = .fill
-    headerStack.detachesHiddenViews = true
-    headerStack.spacing = 8
+    let headerStack = NativeUI.stack(
+      [shelfChrome, shelfControls.navigationView], axis: .vertical, alignment: .leading, spacing: 8, distribution: .fill, detachHidden: true
+    )
     headerStack.setContentCompressionResistancePriority(.required, for: .vertical)
     self.headerStack = headerStack
     let headerContainer = NSView()
@@ -276,13 +273,9 @@ final class ClipboardPanelView: NSView {
       equalTo: contentStack.leadingAnchor, constant: ClipboardShelfControls.contentTypeRailAllowance)
     headerLeadingConstraint = headerStack.leadingAnchor.constraint(
       equalTo: headerContainer.leadingAnchor, constant: ClipboardShelfControls.contentTypeRailAllowance + Metrics.cardInset)
-    let mainStack = NSStackView(views: [headerContainer, contentStack])
-    mainStack.orientation = .vertical
-    mainStack.alignment = .leading
-    mainStack.distribution = .fill
-    mainStack.detachesHiddenViews = true
-    mainStack.spacing = 12
-    mainStack.edgeInsets = contentInsets()
+    let mainStack = NativeUI.stack(
+      [headerContainer, contentStack], axis: .vertical, alignment: .leading, spacing: 12, distribution: .fill, detachHidden: true,
+      insets: contentInsets())
     mainStack.translatesAutoresizingMaskIntoConstraints = false
     addSubview(mainStack)
     addSubview(contentTypeNotch, positioned: .above, relativeTo: mainStack)
@@ -308,31 +301,26 @@ final class ClipboardPanelView: NSView {
   }
 
   private func bindViewModel() {
-    viewModel.onStatusMessageChanged = { [weak self] _ in self?.shelfControls.announceOutcome() }
-    viewModel.onCaptureStatusChanged = { [weak self] in
+    viewModel.onChange = { [weak self] change in
       guard let self else { return }
-      self.shelfControls.refresh()
-      if self.viewModel.visibleItems.isEmpty { self.reloadItems() }
+      switch change {
+      case .status: self.shelfControls.announceOutcome()
+      case .capture:
+        self.shelfControls.refresh()
+        if self.viewModel.visibleItems.isEmpty { self.reloadItems() }
+      case .items: self.handleVisibleItemsChanged()
+      case .search: self.syncSearchFieldFromViewModel()
+      case .selection:
+        guard self.renderedItemsMatchModel else { return }
+        self.updateSelection(scrollSelection: !self.updatesSelectionFromPointer)
+      case .sort: self.shelfControls.refresh()
+      case .collections: self.handleCollectionsChanged()
+      }
     }
-    viewModel.onVisibleItemsChanged = { [weak self] _ in self?.handleVisibleItemsChanged() }
-    viewModel.onSearchTextChanged = { [weak self] _ in self?.syncSearchFieldFromViewModel() }
-    viewModel.onSelectedIndexChanged = { [weak self] _ in
-      guard let self, self.renderedItemsMatchModel else { return }
-      self.updateSelection(scrollSelection: !self.updatesSelectionFromPointer)
-    }
-    viewModel.onSelectedItemsChanged = { [weak self] in
-      guard let self, self.renderedItemsMatchModel else { return }
-      self.updateSelection(scrollSelection: !self.updatesSelectionFromPointer)
-    }
-    viewModel.onSortModeChanged = { [weak self] _ in self?.shelfControls.refresh() }
-    viewModel.onCollectionsChanged = { [weak self] in self?.handleCollectionsChanged() }
   }
 
   private func row(_ views: [NSView]) -> NSStackView {
-    let stack = NSStackView(views: views)
-    stack.orientation = .horizontal
-    stack.alignment = .centerY
-    stack.spacing = 8
+    let stack = NativeUI.stack(views, axis: .horizontal, alignment: .centerY, spacing: 8)
     return stack
   }
 
@@ -786,7 +774,7 @@ final class ClipboardPanelView: NSView {
       self?.viewModel.selectItem(at: selected, mode: mode)
     }
     card.onStartSearch = { [weak self] text in self?.startSearchFromShelf(text) }
-    card.onNavigate = { [weak self] in self?.navigateFromFocusedCard($0) }
+    card.onNavigate = { [weak self] in self?.navigate($0) }
     card.onPasteboardWriters = { [weak self] selected in self?.viewModel.pasteboardWriters(forItemAt: selected) ?? [] }
     card.onCommand = { [weak self, weak card] command in
       guard let self, let card else { return }
@@ -795,40 +783,33 @@ final class ClipboardPanelView: NSView {
   }
 
   private func performCardCommand(_ command: ClipboardCardCommand, at index: Int) {
+    if let mode = command.selectionMode { viewModel.selectItem(at: index, mode: mode) }
+    performCommand(command, at: index)
+  }
+
+  /// All input surfaces use this handler; only editor/window operations belong to the view.
+  func performCommand(_ command: ClipboardCardCommand, at cardIndex: Int? = nil) {
+    if viewModel.performCommand(command) { return }
+    let index = cardIndex ?? viewModel.selectedIndex
     switch command {
-    case .undoDelete, .rename, .editText, .showInClipboard: break
-    case .paste, .copy, .pastePlainText, .copyPlainText, .pasteSelectionText, .copySelectionText, .assignToCollection, .createCollection,
-      .delete:
-      viewModel.selectItem(at: index, mode: .activate)
-    default: viewModel.selectItem(at: index)
-    }
-    switch command {
-    case .paste: viewModel.pasteSelected()
-    case .copy: viewModel.copySelected()
-    case .pastePlainText: viewModel.pasteSelectedPlainText()
-    case .copyPlainText: viewModel.copySelectedPlainText()
-    case .pasteSelectionText: viewModel.pasteSelectedItemsAsText()
-    case .copySelectionText: viewModel.copySelectedItemsAsText()
     case .showInClipboard: showSelectedInClipboard(at: index)
     case .rename: renameClip(at: index)
     case .editText: editText(at: index)
-    case .rotateImage: viewModel.rotateSelectedImageClockwise()
-    case .extractImageText: viewModel.extractTextFromSelectedImage()
     case .preview: onPreview()
-    case .open: viewModel.openSelected()
-    case .reveal: viewModel.revealSelected()
-    case .togglePin: viewModel.togglePinSelected()
-    case .assignToCollection(let name): viewModel.assignSelected(to: name)
-    case .ignoreSourceApp: viewModel.ignoreSelectedSourceApp()
-    case .ignoreKind: viewModel.ignoreSelectedKind()
-    case .delete: viewModel.deleteSelected()
-    case .undoDelete: viewModel.undoLastDelete()
+    case .focusSearch: focusSearch()
+    case .newText: createTextClip()
+    case .close: onClose()
     case .createCollection:
+      if cardIndex == nil {
+        createCollectionFromToolbar()
+        return
+      }
       let targetIDs = viewModel.selectedItemIDs.isEmpty ? viewModel.selectedItem.map { [$0.id] } ?? [] : viewModel.selectedItemIDs
       requestCollectionCreation { [weak self] request in
         self?.viewModel.createCollection(named: request.name, colorHex: request.colorHex, icon: request.icon, selectAfterCreate: false)
         for id in targetIDs { self?.viewModel.assignItem(withID: id, to: request.name) }
       }
+    default: break
     }
   }
 
@@ -1007,17 +988,11 @@ final class ClipboardPanelView: NSView {
     icon.contentTintColor = ClipboardShelfStyle.secondaryText
     icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 30, weight: .light)
     icon.heightAnchor.constraint(equalToConstant: 36).isActive = true
-    let title = NSTextField(wrappingLabelWithString: copy.title)
-    title.font = .systemFont(ofSize: 19, weight: .semibold)
-    title.textColor = .labelColor
-    title.alignment = .center
-    title.maximumNumberOfLines = 2
+    let title = NativeUI.label(
+      copy.title, wrap: true, font: .systemFont(ofSize: 19, weight: .semibold), color: .labelColor, alignment: .center, maxLines: 2)
     title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-    let detail = NSTextField(wrappingLabelWithString: copy.detail)
-    detail.font = .systemFont(ofSize: 13)
-    detail.textColor = ClipboardShelfStyle.secondaryText
-    detail.alignment = .center
-    detail.maximumNumberOfLines = 3
+    let detail = NativeUI.label(
+      copy.detail, wrap: true, font: .systemFont(ofSize: 13), color: ClipboardShelfStyle.secondaryText, alignment: .center, maxLines: 3)
     detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     let actionTitle: String
     if searching {
@@ -1031,10 +1006,7 @@ final class ClipboardPanelView: NSView {
     }
     let recovery = NSButton(title: actionTitle, target: self, action: #selector(performEmptyStateRecovery))
     recovery.bezelStyle = .rounded
-    let stack = NSStackView(views: [icon, title, detail, recovery])
-    stack.orientation = .vertical
-    stack.alignment = .centerX
-    stack.spacing = 10
+    let stack = NativeUI.stack([icon, title, detail, recovery], axis: .vertical, alignment: .centerX, spacing: 10)
     stack.setCustomSpacing(16, after: detail)
     stack.translatesAutoresizingMaskIntoConstraints = false
     let idealWidth = stack.widthAnchor.constraint(equalToConstant: 320)
@@ -1307,7 +1279,11 @@ final class ClipboardPanelView: NSView {
     focusSelectedCard()
   }
 
-  private func navigateFromFocusedCard(_ action: ClipboardCardNavigation) {
+  func navigate(_ action: ClipboardCardNavigation, fromPanel: Bool = false) {
+    if fromPanel {
+      keyboardColumnX = nil
+      claimKeyboardCardSelection()
+    }
     switch action {
     case .move(let delta, let extend), .page(let delta, let extend):
       let step: Int

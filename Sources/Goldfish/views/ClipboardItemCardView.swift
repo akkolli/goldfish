@@ -17,18 +17,13 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
   var onLiftStateChanged: (Bool) -> Void = { _ in }
 
   private var index: Int
-  private let itemID: UUID
   private let contentFormatter = ClipboardItemCardContentFormatter()
   private let configuration: ClipboardCardConfiguration
-  private let layout: ClipboardItemCardLayout
-  private let itemKind: ClipboardItemKind
-  private let presentationKind: ClipboardItemKind
-  private let itemIsPinned: Bool
-  private let canShowInClipboard: Bool
-  private let itemSourceAppName: String?
-  private let itemSourceAppBundleID: String?
-  private let itemCollectionName: String?
-  private let collectionNames: [String]
+  private var item: ClipboardItem { configuration.item }
+  private var layout: ClipboardItemCardLayout { configuration.layout }
+  private var itemSourceAppName: String? { Self.presentSourceText(item.sourceApp) }
+  private var itemSourceAppBundleID: String? { Self.presentSourceText(item.sourceAppBundleId) }
+  private var itemCollectionName: String? { ClipboardCollectionDefaults.normalizedName(item.collectionName) }
   private let contentView = ClipboardCardSurfaceView()
   private weak var previewContent: ClipboardCardPreviewView?
   var renderedTextScale: CGFloat { layout.textScale }
@@ -43,7 +38,7 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
   private var isFocusingFromPointer = false
   private var mouseDownLocation: NSPoint?
 
-  var representedItemID: UUID { itemID }
+  var representedItemID: UUID { item.id }
 
   var representedIndex: Int { index }
 
@@ -62,19 +57,8 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
   init(configuration: ClipboardCardConfiguration, thumbnail: NSImage?, index: Int) {
     let item = configuration.item
     hasThumbnail = thumbnail != nil
-    let normalizedItemCollection = ClipboardCollectionDefaults.normalizedName(item.collectionName)
     self.index = index
-    self.itemID = item.id
     self.configuration = configuration
-    self.layout = configuration.layout
-    self.itemKind = item.kind
-    self.presentationKind = item.presentationKind
-    self.itemIsPinned = item.isPinned
-    self.canShowInClipboard = configuration.canShowInClipboard
-    self.itemSourceAppName = Self.presentSourceText(item.sourceApp)
-    self.itemSourceAppBundleID = Self.presentSourceText(item.sourceAppBundleId)
-    self.itemCollectionName = normalizedItemCollection
-    self.collectionNames = configuration.collectionNames.compactMap { ClipboardCollectionDefaults.normalizedName($0) }
     super.init(frame: .zero)
     configure(item: item, thumbnail: thumbnail)
   }
@@ -220,35 +204,34 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
       return
     }
     if relevantModifiers == .shift {
-      switch event.keyCode {
-      case 36, 76: onCommand(.pastePlainText)
-      case 115: onNavigate(.endpoint(last: false, extend: true))
-      case 116: onNavigate(.page(-1, extend: true))
-      case 119: onNavigate(.endpoint(last: true, extend: true))
-      case 121: onNavigate(.page(1, extend: true))
-      case 123 where layout.usesGalleryStyle: onNavigate(.move(-1, extend: true))
-      case 124 where layout.usesGalleryStyle: onNavigate(.move(1, extend: true))
-      case 126: onNavigate(.vertical(-1, extend: true))
-      case 125: onNavigate(.vertical(1, extend: true))
-      default: super.keyDown(with: event)
+      if [36, 76].contains(event.keyCode) {
+        onCommand(.pastePlainText)
+      } else if let navigation = navigationKey(event.keyCode, extend: true) {
+        onNavigate(navigation)
+      } else {
+        super.keyDown(with: event)
       }
       return
     }
-
     switch event.keyCode {
     case 36, 76: onCommand(.paste)
-    case 49: if canPreview { onCommand(.preview) } else { onCommand(.paste) }
+    case 49: onCommand(.preview)
     case 51, 117: onCommand(.delete)
-    case 115: onNavigate(.endpoint(last: false, extend: false))
-    case 116: onNavigate(.page(-1, extend: false))
-    case 119: onNavigate(.endpoint(last: true, extend: false))
-    case 121: onNavigate(.page(1, extend: false))
-    case 123 where layout.usesGalleryStyle: onNavigate(.move(-1, extend: false))
-    case 124 where layout.usesGalleryStyle: onNavigate(.move(1, extend: false))
-    case 126: onNavigate(.vertical(-1, extend: false))
-    case 125: onNavigate(.vertical(1, extend: false))
-    default: if let text = shelfSearchText(from: event) { onStartSearch(text) } else { super.keyDown(with: event) }
+    default:
+      if let navigation = navigationKey(event.keyCode, extend: false) {
+        onNavigate(navigation)
+      } else if let text = shelfSearchText(from: event) {
+        onStartSearch(text)
+      } else {
+        super.keyDown(with: event)
+      }
     }
+  }
+
+  private func navigationKey(_ code: UInt16, extend: Bool) -> ClipboardCardNavigation? {
+    if code == 125 || code == 126 { return .vertical(code == 125 ? 1 : -1, extend: extend) }
+    if !layout.usesGalleryStyle, code == 123 || code == 124 { return nil }
+    return ClipboardCardNavigation.key(code, extend: extend)
   }
 
   override func accessibilityPerformPress() -> Bool {
@@ -288,7 +271,7 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
     let writers = onPasteboardWriters(index)
     let dragWriters = writers.isEmpty ? [internalDragPasteboardItem()] : writers
     onSelect(index, .activate)
-    ClipboardCardDragContext.itemID = itemID
+    ClipboardCardDragContext.itemID = item.id
 
     let preview = dragPreviewImage()
     let dragItems = dragWriters.enumerated().map { offset, writer in
@@ -306,7 +289,7 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
 
   private func internalDragPasteboardItem() -> NSPasteboardItem {
     let pasteboardItem = NSPasteboardItem()
-    pasteboardItem.setString(itemID.uuidString, forType: ClipboardItemDragPasteboard.itemIDType)
+    pasteboardItem.setString(item.id.uuidString, forType: ClipboardItemDragPasteboard.itemIDType)
     return pasteboardItem
   }
 
@@ -315,7 +298,7 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
   func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
 
   func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-    if ClipboardCardDragContext.itemID == itemID { ClipboardCardDragContext.itemID = nil }
+    if ClipboardCardDragContext.itemID == item.id { ClipboardCardDragContext.itemID = nil }
   }
 
   override func menu(for event: NSEvent) -> NSMenu? {
@@ -336,17 +319,19 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
       addMenuItem("Paste Selection as Text", command: .pasteSelectionText, to: menu)
       addMenuItem("Copy Selection as Text", command: .copySelectionText, to: menu)
     }
-    if canShowInClipboard { addMenuItem("Show in Clipboard", command: .showInClipboard, to: menu) }
+    if configuration.canShowInClipboard { addMenuItem("Show in Clipboard", command: .showInClipboard, to: menu) }
     menu.addItem(.separator())
-    if canPreview { addMenuItem("Quick Look", command: .preview, to: menu) }
+    addMenuItem("Quick Look", command: .preview, to: menu)
     if canOpen { addMenuItem("Open", command: .open, to: menu) }
     if canReveal { addMenuItem("Reveal in Finder", command: .reveal, to: menu) }
     addMenuItem("Rename…", command: .rename, to: menu)
     if canEditText { addMenuItem("Edit Text…", command: .editText, to: menu) }
-    if canRotateImage { addMenuItem("Rotate Image", command: .rotateImage, to: menu) }
-    if canExtractImageText { addMenuItem("Extract Text", command: .extractImageText, to: menu) }
+    if item.kind == .image {
+      addMenuItem("Rotate Image", command: .rotateImage, to: menu)
+      addMenuItem("Extract Text", command: .extractImageText, to: menu)
+    }
     menu.addItem(.separator())
-    addMenuItem(itemIsPinned ? "Unpin" : "Pin", command: .togglePin, to: menu)
+    addMenuItem(item.isPinned ? "Unpin" : "Pin", command: .togglePin, to: menu)
     addCollectionMenu(to: menu)
     addCaptureRulesMenu(to: menu)
     menu.addItem(NSMenuItem.separator())
@@ -393,7 +378,7 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
     let ignoreSource = addMenuItem(ignoreSourceTitle(), command: .ignoreSourceApp, to: submenu)
     ignoreSource.isEnabled = itemSourceAppName != nil || itemSourceAppBundleID != nil
 
-    addMenuItem("Ignore \(contentFormatter.kindLabel(for: itemKind)) Items", command: .ignoreKind, to: submenu)
+    addMenuItem("Ignore \(contentFormatter.kindLabel(for: item.kind)) Items", command: .ignoreKind, to: submenu)
 
     menu.addItem(parent)
     menu.setSubmenu(submenu, for: parent)
@@ -413,7 +398,7 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
   private func availableCollectionNames() -> [String] {
     var names: [String] = []
     var seen = Set<String>()
-    for candidate in collectionNames {
+    for candidate in configuration.collectionNames {
       guard let name = ClipboardCollectionDefaults.normalizedName(candidate) else { continue }
       let key = name.lowercased()
       guard !seen.contains(key) else { continue }
@@ -450,38 +435,10 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
     return item
   }
 
-  private var canOpen: Bool {
-    switch presentationKind {
-    case .url, .file, .image, .pdf, .audio, .video: return true
-    case .text, .richText, .unknown, .color, .code: return false
-    }
-  }
-
-  private var canPreview: Bool {
-    switch itemKind {
-    case .text, .url, .image, .richText, .file, .pdf, .audio, .unknown, .color, .code, .video: return true
-    }
-  }
-
-  private var canEditText: Bool { itemKind == .text || itemKind == .code }
-
-  private var canRotateImage: Bool { itemKind == .image }
-
-  private var canExtractImageText: Bool { itemKind == .image }
-
-  private var canPlainText: Bool {
-    switch itemKind {
-    case .url, .image, .richText, .file, .pdf, .audio, .color, .video: return true
-    case .text, .unknown, .code: return false
-    }
-  }
-
-  private var canReveal: Bool {
-    switch itemKind {
-    case .file, .image, .pdf, .audio, .video: return true
-    case .text, .richText, .url, .unknown, .color, .code: return false
-    }
-  }
+  private var canOpen: Bool { item.presentationKind.canOpen }
+  private var canEditText: Bool { item.kind == .text || item.kind == .code }
+  private var canPlainText: Bool { ![.text, .unknown, .code].contains(item.kind) }
+  private var canReveal: Bool { item.kind.canReveal }
 
   private var verticalHeaderCornerRadius: CGFloat { layout.cornerRadius }
 
@@ -507,29 +464,19 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
     // A clip is one navigable item. Its clipped preview is not a separate set
     // of invisible VoiceOver stops; Quick Look exposes the complete content.
     setAccessibilityChildren([])
-    setAccessibilityCustomActions([
-      NSAccessibilityCustomAction(name: "Select and preview") { [weak self] in
-        guard let self else { return false }
-        self.onSelect(self.index, .replace)
-        self.onCommand(.preview)
-        return true
-      },
-      NSAccessibilityCustomAction(name: "Copy") { [weak self] in
-        guard let self else { return false }
-        self.onCommand(.copy)
-        return true
-      },
-      NSAccessibilityCustomAction(name: item.isPinned ? "Unpin" : "Pin") { [weak self] in
-        guard let self else { return false }
-        self.onCommand(.togglePin)
-        return true
-      },
-      NSAccessibilityCustomAction(name: "Quick Look") { [weak self] in
-        guard let self else { return false }
-        self.onCommand(.preview)
-        return true
-      },
-    ])
+    let accessibleCommands: [(String, ClipboardCardCommand, Bool)] = [
+      ("Select and preview", .preview, true), ("Copy", .copy, false), (item.isPinned ? "Unpin" : "Pin", .togglePin, false),
+      ("Quick Look", .preview, false),
+    ]
+    setAccessibilityCustomActions(
+      accessibleCommands.map { name, command, selects in
+        NSAccessibilityCustomAction(name: name) { [weak self] in
+          guard let self else { return false }
+          if selects { self.onSelect(self.index, .replace) }
+          self.onCommand(command)
+          return true
+        }
+      })
     focusRingType = .none
 
     contentView.wantsLayer = true

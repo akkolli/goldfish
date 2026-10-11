@@ -101,6 +101,14 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
     let panel = ClipboardPanelViewModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
     panel.createCollection(named: "Research", selectAfterCreate: false)
     panel.assignItem(withID: link.id, to: "Research")
+    panel.onChange = { [weak panel] change in
+      guard let panel else { return }
+      XCTAssertTrue(Thread.isMainThread)
+      guard change == .items else { return }
+      let visibleIDs = Set(panel.visibleItems.map(\.id))
+      XCTAssertTrue(Set(panel.selectedItemIDs).isSubset(of: visibleIDs), "Item events must publish a reconciled selection")
+      if panel.visibleItems.isEmpty { XCTAssertNil(panel.selectedItem) } else { XCTAssertNotNil(panel.selectedItem) }
+    }
     panel.searchText = "review app:\"Brave Browser\" type:link"
     waitUntil { panel.visibleItems.count == 1 }
     XCTAssertEqual(panel.selectedItem?.id, link.id)
@@ -123,6 +131,37 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
     XCTAssertTrue(relaunchedSettings.copySoundEnabled)
     XCTAssertEqual(relaunchedSettings.soundVolume, 0.35)
     XCTAssertTrue(relaunchedSettings.customCollectionNames.contains("Research"))
+  }
+
+  func testDestinationCountsMatchPresentationFiltersIncludingTextLinks() {
+    let cases: [(ClipboardItemKind, String, [ClipboardSortMode])] = [
+      (.url, "https://example.com/direct", [.links]), (.text, "https://example.com/plain", [.links]),
+      (.richText, "https://example.com/rich", [.links]), (.unknown, "https://example.com/unknown", [.links]), (.text, "A note", [.text]),
+      (.richText, "A formatted note", [.text]), (.code, "let value = 1", [.text, .code]), (.unknown, "Opaque content", []),
+      (.image, "Picture", [.images]), (.pdf, "Document", [.files]), (.file, "File", [.files]), (.audio, "Sound", [.audio]),
+      (.video, "Movie", [.videos]), (.color, "Swatch", [.colors]),
+    ]
+    let clips = cases.enumerated().map { index, scenario in
+      testItem(
+        kind: scenario.0, displayText: scenario.1, payload: scenario.0 == .richText ? "/rtf-\(index)" : scenario.1,
+        sourceApp: "Count Parity", isPinned: index % 2 == 0, collectionName: "Count Parity")
+    }
+    clips.forEach { store.upsert($0) }
+    let panel = ClipboardPanelViewModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
+    for query in ["", "app:\"Count Parity\"", "no-matching-clips"] {
+      panel.searchText = query
+      for mode in ClipboardSortMode.allCases {
+        let expected = clips.enumerated().compactMap { index, clip -> UUID? in
+          guard query != "no-matching-clips" else { return nil }
+          let included = mode == .mostRecent || mode == .mostUsed || (mode == .pinned ? clip.isPinned : cases[index].2.contains(mode))
+          return included ? clip.id : nil
+        }
+        panel.selectSortMode(mode)
+        XCTAssertEqual(Set(panel.visibleItems.map(\.id)), Set(expected), "\(query): \(mode)")
+        XCTAssertEqual(panel.collectionCount(for: mode), expected.count, "\(query): \(mode)")
+      }
+      XCTAssertEqual(panel.collectionCount(named: "Count Parity"), query == "no-matching-clips" ? 0 : clips.count)
+    }
   }
 
   func testIgnoredPausedAndResumedCapture() {
@@ -168,13 +207,16 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
       settle(0.32)
       let panel = try XCTUnwrap(window.contentView as? ClipboardPanelView)
       XCTAssertTrue(window.isVisible)
+      window.sharingType = .none
       XCTAssertTrue(descendants(panel).contains { $0 is ClipboardItemCardView })
 
       try button("New Text Clip", in: panel).performClick(nil)
       XCTAssertTrue(panel.presentedTextEditorWindow?.isVisible == true)
+      XCTAssertEqual(panel.presentedTextEditorWindow?.sharingType, NSWindow.SharingType.none)
       try button("Clear History", in: panel).performClick(nil)
       waitUntil { panel.presentedTextEditorWindow?.isVisible != true }
       XCTAssertTrue(panel.presentedMenuWindow?.isVisible == true)
+      XCTAssertEqual(panel.presentedMenuWindow?.sharingType, NSWindow.SharingType.none)
       controller.hide(immediate: true)
       XCTAssertNil(panel.presentedMenuWindow)
       XCTAssertTrue(window.childWindows?.isEmpty ?? true)
@@ -182,9 +224,33 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
       settle(0.32)
       XCTAssertTrue(window.isVisible)
       controller.toggle()
-      settle(0.23)
+      waitUntil { !window.isVisible }
       XCTAssertFalse(window.isVisible)
     }
+  }
+
+  func testPreviewInheritsShelfPrivacyLevelAndOwnership() throws {
+    let parent = NSWindow(contentRect: .zero, styleMask: [], backing: .buffered, defer: false)
+    let child = NSPanel(contentRect: .zero, styleMask: [.nonactivatingPanel], backing: .buffered, defer: false)
+    parent.isReleasedWhenClosed = false
+    let preview = ClipboardAuxiliaryWindowController(window: child)
+    defer {
+      preview.close()
+      parent.close()
+    }
+    parent.sharingType = .none
+    parent.level = ClipboardPanelController.shelfWindowLevel
+    preview.present(relativeTo: parent)
+    XCTAssertEqual(child.sharingType, NSWindow.SharingType.none)
+    XCTAssertEqual(child.level, parent.level)
+    // AppKit may add cycle flags when a panel is ordered front. Required shelf
+    // space behavior must survive that native adjustment.
+    let behavior = ClipboardPanelController.panelCollectionBehavior
+    XCTAssertEqual(child.collectionBehavior.intersection(behavior), behavior)
+    XCTAssertTrue(parent.childWindows?.contains(child) == true)
+    preview.close()
+    XCTAssertFalse(child.isVisible)
+    XCTAssertTrue(parent.childWindows?.isEmpty ?? true)
   }
 
   func testSearchClearAndPointerHoverWithVirtualCards() throws {
@@ -224,11 +290,7 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
     // The model transform changes synchronously; running the event loop here
     // would let the machine's real pointer replace the simulated hover.
     let layer = try XCTUnwrap(hovered.layer)
-    if ClipboardShelfMotion.reducesMotion {
-      XCTAssertEqual(layer.transform.m11, 1)
-    } else {
-      XCTAssertGreaterThan(layer.transform.m11, 1)
-    }
+    if ClipboardShelfMotion.reducesMotion { XCTAssertEqual(layer.transform.m11, 1) } else { XCTAssertGreaterThan(layer.transform.m11, 1) }
     panel.clearPointerHoverStates()
     XCTAssertEqual(layer.transform.m11, 1)
     XCTAssertEqual(model.selectedIndex, hovered.representedIndex)
@@ -237,7 +299,10 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
   func testSettingsWindowNavigationChangesPersistentCaptureAndAppearancePreferences() throws {
     let existing = Set(NSApp.windows.map(ObjectIdentifier.init))
     let controller = SettingsWindowController(settings: settings, store: store, cacheService: cache)
-    let window = try XCTUnwrap(NSApp.windows.first { !existing.contains(ObjectIdentifier($0)) && $0.title == "Goldfish Settings — " + AppConfiguration.buildDescription })
+    let window = try XCTUnwrap(
+      NSApp.windows.first {
+        !existing.contains(ObjectIdentifier($0)) && $0.title == "Goldfish Settings — " + AppConfiguration.buildDescription
+      })
     defer { window.close() }
     controller.show()
     XCTAssertTrue(window.isVisible)
@@ -265,9 +330,7 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
 
   private func item(_ text: String, kind: ClipboardItemKind = .text, sourceApp: String = "Workflow Tests") -> ClipboardItem {
     let now = Date()
-    return testItem(
-      kind: kind, payload: text, payloadHash: UUID().uuidString, createdAt: now, useCount: 0,
-      sourceApp: sourceApp)
+    return testItem(kind: kind, payload: text, payloadHash: UUID().uuidString, createdAt: now, useCount: 0, sourceApp: sourceApp)
   }
 
   private func copy(_ text: String) {

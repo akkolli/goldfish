@@ -29,28 +29,18 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
     self.onSave = onSave
     self.onFinish = onFinish
     saveButton = ClipboardToolbarIconButton(title: "Save", target: nil, action: nil)
-    window = ClipEditorPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 300, height: editorHeight + Metrics.chromeHeight),
-      styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    window = ClipEditorPanel(title: title, size: NSSize(width: 300, height: editorHeight + Metrics.chromeHeight))
     super.init()
 
-    window.title = title
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
-    window.backgroundColor = .clear
-    window.isOpaque = false
-    window.hasShadow = true
-    window.isReleasedWhenClosed = false
-    window.hidesOnDeactivate = false
     window.becomesKeyOnlyIfNeeded = false
-    window.acceptsMouseMovedEvents = true
 
     let root = ClipEditorSheetSurface(frame: window.contentView?.bounds ?? .zero)
     window.contentView = root
     let isCreating = title == "New Text Clip"
-    let heading = NSTextField(labelWithString: isCreating ? "New clip" : "Edit clip")
-    heading.font = .systemFont(ofSize: 13, weight: .semibold)
-    heading.textColor = .labelColor
+    let heading = NativeUI.label(
+      isCreating ? "New clip" : "Edit clip", font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
 
     let cancelButton = ClipboardToolbarIconButton(title: "Cancel", target: self, action: #selector(cancel))
     cancelButton.keyEquivalent = "\u{1b}"
@@ -127,21 +117,18 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
   func show(relativeTo parent: NSWindow, anchoredTo anchor: NSView?) {
     parentWindow = parent
     anchorView = anchor
-    window.level = NSWindow.Level(rawValue: parent.level.rawValue + 1)
-    window.collectionBehavior = parent.collectionBehavior
     window.setContentSize(NSSize(width: min(300, parent.frame.width - 20), height: sheetHeight))
     window.contentView?.layoutSubtreeIfNeeded()
     updateEditorHeight()
     positionNearAnchor()
-    parent.addChildWindow(window, ordered: .above)
+    window.attachToShelf(parent)
     window.makeKeyAndOrderFront(nil)
     window.makeFirstResponder(editor)
   }
 
   func suspend() {
     guard isPresented else { return }
-    parentWindow?.removeChildWindow(window)
-    window.orderOut(nil)
+    window.detachFromShelf()
   }
 
   private func positionNearAnchor() {
@@ -222,8 +209,7 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
   func dismiss() {
     guard !isFinished else { return }
     isFinished = true
-    parentWindow?.removeChildWindow(window)
-    window.orderOut(nil)
+    window.detachFromShelf()
     onFinish()
   }
 }

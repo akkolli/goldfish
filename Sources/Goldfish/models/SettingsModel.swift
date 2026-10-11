@@ -126,12 +126,15 @@ final class SettingsModel {
     static let collectionIcons = "collectionIcons"
   }
 
-  @Preference(.maxHistoryItems, AppConfiguration.defaultHistoryLength, key: Keys.maxHistoryItems,
+  @Preference(
+    .maxHistoryItems, AppConfiguration.defaultHistoryLength, key: Keys.maxHistoryItems,
     read: { ($0 as? Int).flatMap { $0 > 0 ? $0 : nil } }, normalize: SettingsModel.clampedMaxHistoryItems) var maxHistoryItems: Int
   @Preference(.historyRetention, raw: .oneMonth, key: Keys.historyRetention) var historyRetention: HistoryRetention
   @Preference(.defaultSortMode, raw: .mostRecent, key: Keys.defaultSortMode) var defaultSortMode: ClipboardSortMode
-  @Preference(.imageCacheMaxBytes, AppConfiguration.defaultCacheMaxBytes, key: Keys.imageCacheMaxBytes,
-    read: { ($0 as? Int64).flatMap { $0 > 0 ? $0 : nil } }, normalize: SettingsModel.clampedImageCacheMaxBytes) var imageCacheMaxBytes: Int64
+  @Preference(
+    .imageCacheMaxBytes, AppConfiguration.defaultCacheMaxBytes, key: Keys.imageCacheMaxBytes,
+    read: { ($0 as? Int64).flatMap { $0 > 0 ? $0 : nil } }, normalize: SettingsModel.clampedImageCacheMaxBytes) var imageCacheMaxBytes:
+    Int64
   @Preference(.includeImageTextInSearch, false, key: Keys.includeImageTextInSearch) var includeImageTextInSearch: Bool
   @Preference(.pruneDuplicates, true, key: Keys.pruneDuplicates) var pruneDuplicates: Bool
   @Preference(.launchAtLogin, false, key: Keys.launchAtLogin) var launchAtLogin: Bool
@@ -148,16 +151,20 @@ final class SettingsModel {
   @Preference(.other, false, key: Keys.sortByUsage) var sortByUsage: Bool
   @Preference(.cloudSync, false, key: Keys.iCloudSyncEnabled) var iCloudSyncEnabled: Bool
   @Preference(.openShortcut, shortcut: AppConfiguration.defaultOpenShortcut, key: Keys.openShortcut) var openShortcut: ShortcutBinding
-  @Preference(.settingsShortcut, shortcut: AppConfiguration.defaultSettingsShortcut, key: Keys.settingsShortcut) var settingsShortcut: ShortcutBinding
+  @Preference(.settingsShortcut, shortcut: AppConfiguration.defaultSettingsShortcut, key: Keys.settingsShortcut) var settingsShortcut:
+    ShortcutBinding
   @Preference(.ignoredApps, AppConfiguration.defaultIgnoredApps, key: Keys.ignoredApps) var ignoredApps: [String]
-  @Preference(.ignoredItemKinds, [], key: Keys.ignoredItemKinds, normalize: SettingsModel.normalizedIgnoredItemKinds) var ignoredItemKindsRaw: [Int]
-  @Preference(.pollProfile, raw: AppConfiguration.defaultPollProfile, key: Keys.pollProfile) var pollProfileRaw: AppConfiguration.PollProfile
+  @Preference(.ignoredItemKinds, [], key: Keys.ignoredItemKinds, normalize: SettingsModel.normalizedIgnoredItemKinds)
+  var ignoredItemKindsRaw: [Int]
+  @Preference(.pollProfile, raw: AppConfiguration.defaultPollProfile, key: Keys.pollProfile) var pollProfileRaw:
+    AppConfiguration.PollProfile
   @Preference(.keepFirstImage, true, key: Keys.keepFirstImage) var keepFirstImage: Bool
   @Preference(.excludeSensitive, true, key: Keys.excludeSensitive) var excludeSensitive: Bool
   @Preference(.pauseCapture, false, key: Keys.pauseCapture) var pauseCapture: Bool
-  @Preference(.pauseCapture, nil, key: Keys.pauseCaptureUntil,
-    read: { ($0 as? TimeInterval).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil } },
-    encode: { $0?.timeIntervalSince1970 }) var pauseCaptureUntil: Date?
+  @Preference(
+    .pauseCapture, nil, key: Keys.pauseCaptureUntil,
+    read: { ($0 as? TimeInterval).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil } }, encode: { $0?.timeIntervalSince1970 })
+  var pauseCaptureUntil: Date?
   @Preference(.hideFromScreenCapture, false, key: Keys.hideFromScreenCapture) var hideFromScreenCapture: Bool
   @Preference(.clearHistoryOnQuit, false, key: Keys.clearHistoryOnQuit) var clearHistoryOnQuit: Bool
 
@@ -179,21 +186,21 @@ final class SettingsModel {
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
-    let existingProfile = [Keys.maxHistoryItems, Keys.historyRetention, Keys.openShortcut].contains {
-      defaults.object(forKey: $0) != nil
-    }
+    let existingProfile = [Keys.maxHistoryItems, Keys.historyRetention, Keys.openShortcut].contains { defaults.object(forKey: $0) != nil }
     let savedUsageSort = defaults.object(forKey: Keys.sortByUsage) as? Bool
     customCollectionNames = Self.normalizedCollectionNames(defaults.stringArray(forKey: Keys.customCollectionNames) ?? [])
-    collectionColorHexes = Self.normalizedCollectionColorHexes(defaults.dictionary(forKey: Keys.collectionColorHexes))
-    collectionIcons = Self.normalizedCollectionIcons(defaults.dictionary(forKey: Keys.collectionIcons))
+    collectionColorHexes = Self.normalizedMetadata(
+      defaults.dictionary(forKey: Keys.collectionColorHexes), normalize: Self.normalizedHexColor)
+    collectionIcons = Self.normalizedMetadata(
+      defaults.dictionary(forKey: Keys.collectionIcons), normalize: ClipboardCollectionIcon.normalized)
     onboardingCompleted = defaults.object(forKey: Keys.onboardingCompleted) as? Bool ?? existingProfile
     accessibilityNoticeShown = defaults.object(forKey: Keys.accessibilityNoticeShown) as? Bool ?? false
     let preferences: [any PreferenceLoading] = [
-      _maxHistoryItems, _historyRetention, _defaultSortMode, _imageCacheMaxBytes, _includeImageTextInSearch,
-      _pruneDuplicates, _launchAtLogin, _showMenuBarIcon, _goldMenuBarIcon, _copySoundEnabled, _pasteSoundEnabled,
-      _soundVolume, _showDockIcon, _panelSide, _shelfWidth, _shelfLayout, _largerShelfText, _sortByUsage,
-      _iCloudSyncEnabled, _openShortcut, _settingsShortcut, _ignoredApps, _ignoredItemKindsRaw, _pollProfileRaw,
-      _keepFirstImage, _excludeSensitive, _pauseCapture, _pauseCaptureUntil, _hideFromScreenCapture, _clearHistoryOnQuit,
+      _maxHistoryItems, _historyRetention, _defaultSortMode, _imageCacheMaxBytes, _includeImageTextInSearch, _pruneDuplicates,
+      _launchAtLogin, _showMenuBarIcon, _goldMenuBarIcon, _copySoundEnabled, _pasteSoundEnabled, _soundVolume, _showDockIcon, _panelSide,
+      _shelfWidth, _shelfLayout, _largerShelfText, _sortByUsage, _iCloudSyncEnabled, _openShortcut, _settingsShortcut, _ignoredApps,
+      _ignoredItemKindsRaw, _pollProfileRaw, _keepFirstImage, _excludeSensitive, _pauseCapture, _pauseCaptureUntil, _hideFromScreenCapture,
+      _clearHistoryOnQuit,
     ]
     for preference in preferences {
       preference.load(defaults)
@@ -224,7 +231,9 @@ final class SettingsModel {
 
   func setLaunchAtLoginStatus(message: String) { setStatus(\.launchAtLoginErrorMessage, message: message, change: .status) }
 
-  func setAccessibilityPermissionStatus(message: String) { setStatus(\.accessibilityPermissionStatusMessage, message: message, change: .status) }
+  func setAccessibilityPermissionStatus(message: String) {
+    setStatus(\.accessibilityPermissionStatusMessage, message: message, change: .status)
+  }
 
   func setCaptureStatus(message: String) { setStatus(\.captureStatusMessage, message: message, change: .captureStatus) }
 
@@ -264,36 +273,39 @@ final class SettingsModel {
       changed = true
     }
 
-    if let normalizedHex = Self.normalizedHexColor(colorHex), collectionColorHexes[canonicalName] != normalizedHex {
-      for key in collectionColorHexes.keys where key.caseInsensitiveCompare(canonicalName) == .orderedSame && key != canonicalName {
-        collectionColorHexes.removeValue(forKey: key)
-      }
-      collectionColorHexes[canonicalName] = normalizedHex
-      changed = true
-    }
-
-    if let icon = ClipboardCollectionIcon.normalized(icon), collectionIcons[canonicalName] != icon {
-      for key in collectionIcons.keys where key.caseInsensitiveCompare(canonicalName) == .orderedSame && key != canonicalName {
-        collectionIcons.removeValue(forKey: key)
-      }
-      collectionIcons[canonicalName] = icon
-      changed = true
-    }
+    changed = writeMetadata(\.collectionColorHexes, name: canonicalName, value: Self.normalizedHexColor(colorHex)) || changed
+    changed = writeMetadata(\.collectionIcons, name: canonicalName, value: ClipboardCollectionIcon.normalized(icon)) || changed
 
     if changed { storeAndNotify(.collections) }
     return normalizedName
   }
 
-  func collectionColorHex(forCollectionNamed name: String) -> String? {
-    guard let normalizedName = ClipboardCollectionDefaults.normalizedName(name) else { return nil }
-    if let exact = collectionColorHexes[normalizedName] { return exact }
-    return collectionColorHexes.first { storedName, _ in storedName.caseInsensitiveCompare(normalizedName) == .orderedSame }?.value
+  func collectionColorHex(forCollectionNamed name: String) -> String? { metadata(\.collectionColorHexes, name: name) }
+  func collectionIcon(forCollectionNamed name: String) -> String? { metadata(\.collectionIcons, name: name) }
+
+  private typealias MetadataKey = ReferenceWritableKeyPath<SettingsModel, [String: String]>
+  private func metadata(_ field: MetadataKey, name: String) -> String? {
+    guard let name = ClipboardCollectionDefaults.normalizedName(name) else { return nil }
+    return self[keyPath: field][name] ?? self[keyPath: field].first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
   }
 
-  func collectionIcon(forCollectionNamed name: String) -> String? {
-    guard let normalizedName = ClipboardCollectionDefaults.normalizedName(name) else { return nil }
-    if let exact = collectionIcons[normalizedName] { return exact }
-    return collectionIcons.first { storedName, _ in storedName.caseInsensitiveCompare(normalizedName) == .orderedSame }?.value
+  private func removeMetadata(_ field: MetadataKey, name: String, keeping canonicalName: String? = nil) -> Bool {
+    let keys = self[keyPath: field].keys.filter { $0.caseInsensitiveCompare(name) == .orderedSame && $0 != canonicalName }
+    for key in keys { self[keyPath: field].removeValue(forKey: key) }
+    return !keys.isEmpty
+  }
+
+  private func writeMetadata(_ field: MetadataKey, name: String, value: String?) -> Bool {
+    guard let value, self[keyPath: field][name] != value else { return false }
+    _ = removeMetadata(field, name: name, keeping: name)
+    self[keyPath: field][name] = value
+    return true
+  }
+
+  private func moveMetadata(_ field: MetadataKey, from oldName: String, to newName: String, value: String?) -> Bool {
+    let resolved = value ?? metadata(field, name: oldName)
+    let removed = removeMetadata(field, name: oldName)
+    return writeMetadata(field, name: newName, value: resolved) || removed
   }
 
   @discardableResult func updateCollection(named currentName: String, to newName: String, colorHex: String? = nil, icon: String? = nil)
@@ -327,27 +339,12 @@ final class SettingsModel {
       changed = true
     }
 
-    let existingColor = collectionColorHex(forCollectionNamed: oldCanonicalName)
-    for key in collectionColorHexes.keys where key.caseInsensitiveCompare(oldCanonicalName) == .orderedSame {
-      collectionColorHexes.removeValue(forKey: key)
-      changed = true
-    }
-    let resolvedColor = Self.normalizedHexColor(colorHex) ?? existingColor
-    if let resolvedColor, collectionColorHexes[targetCanonicalName] != resolvedColor {
-      collectionColorHexes[targetCanonicalName] = resolvedColor
-      changed = true
-    }
-
-    let existingIcon = collectionIcon(forCollectionNamed: oldCanonicalName)
-    for key in collectionIcons.keys where key.caseInsensitiveCompare(oldCanonicalName) == .orderedSame {
-      collectionIcons.removeValue(forKey: key)
-      changed = true
-    }
-    let resolvedIcon = ClipboardCollectionIcon.normalized(icon) ?? existingIcon
-    if let resolvedIcon, collectionIcons[targetCanonicalName] != resolvedIcon {
-      collectionIcons[targetCanonicalName] = resolvedIcon
-      changed = true
-    }
+    changed =
+      moveMetadata(\.collectionColorHexes, from: oldCanonicalName, to: targetCanonicalName, value: Self.normalizedHexColor(colorHex))
+      || changed
+    changed =
+      moveMetadata(\.collectionIcons, from: oldCanonicalName, to: targetCanonicalName, value: ClipboardCollectionIcon.normalized(icon))
+      || changed
 
     if changed { storeAndNotify(.collections) }
     return targetCanonicalName
@@ -360,14 +357,9 @@ final class SettingsModel {
       customCollectionNames.remove(at: index)
       changed = true
     }
-    for key in collectionColorHexes.keys where key.caseInsensitiveCompare(normalizedName) == .orderedSame {
-      collectionColorHexes.removeValue(forKey: key)
-      changed = true
-    }
-    for key in collectionIcons.keys where key.caseInsensitiveCompare(normalizedName) == .orderedSame {
-      collectionIcons.removeValue(forKey: key)
-      changed = true
-    }
+    changed = removeMetadata(\.collectionColorHexes, name: normalizedName) || changed
+    changed = removeMetadata(\.collectionIcons, name: normalizedName) || changed
+
     if changed { storeAndNotify(.collections) }
     return normalizedName
   }
@@ -412,27 +404,13 @@ final class SettingsModel {
     return values.filter { $0 != ClipboardItemKind.text.rawValue }
   }
 
-  private static func normalizedCollectionColorHexes(_ rawValue: [String: Any]?) -> [String: String] {
-    guard let rawValue else { return [:] }
-    var normalized: [String: String] = [:]
-    for (name, color) in rawValue {
-      guard let normalizedName = ClipboardCollectionDefaults.normalizedName(name), let hex = normalizedHexColor(color as? String) else {
-        continue
-      }
-      normalized[normalizedName] = hex
+  private static func normalizedMetadata(_ raw: [String: Any]?, normalize: (String?) -> String?) -> [String: String] {
+    var values: [String: String] = [:]
+    for (name, value) in raw ?? [:] {
+      guard let name = ClipboardCollectionDefaults.normalizedName(name), let value = normalize(value as? String) else { continue }
+      values[name] = value
     }
-    return normalized
-  }
-
-  private static func normalizedCollectionIcons(_ rawValue: [String: Any]?) -> [String: String] {
-    guard let rawValue else { return [:] }
-    var normalized: [String: String] = [:]
-    for (name, symbol) in rawValue {
-      guard let name = ClipboardCollectionDefaults.normalizedName(name), let symbol = ClipboardCollectionIcon.normalized(symbol as? String)
-      else { continue }
-      normalized[name] = symbol
-    }
-    return normalized
+    return values
   }
 
   private static func normalizedHexColor(_ value: String?) -> String? {
@@ -462,9 +440,8 @@ protocol PreferenceLoading: AnyObject {
   let normalize: (Value) -> Value
 
   init(
-    _ change: SettingsModel.Change, _ initial: Value, key: String,
-    read: @escaping (Any?) -> Value? = { $0 as? Value }, encode: @escaping (Value) -> Any? = { $0 },
-    normalize: @escaping (Value) -> Value = { $0 }
+    _ change: SettingsModel.Change, _ initial: Value, key: String, read: @escaping (Any?) -> Value? = { $0 as? Value },
+    encode: @escaping (Value) -> Any? = { $0 }, normalize: @escaping (Value) -> Value = { $0 }
   ) {
     value = initial
     self.change = change
@@ -474,14 +451,12 @@ protocol PreferenceLoading: AnyObject {
     self.normalize = normalize
   }
 
-  convenience init(_ change: SettingsModel.Change, raw initial: Value, key: String)
-  where Value: RawRepresentable, Value.RawValue == Int {
+  convenience init(_ change: SettingsModel.Change, raw initial: Value, key: String) where Value: RawRepresentable, Value.RawValue == Int {
     self.init(change, initial, key: key, read: { ($0 as? Int).flatMap(Value.init(rawValue:)) }, encode: { $0.rawValue })
   }
 
   convenience init(_ change: SettingsModel.Change, shortcut initial: Value, key: String) where Value == ShortcutBinding {
-    self.init(
-      change, initial, key: key, read: { ($0 as? String).flatMap(ShortcutBinding.init(encoded:)) }, encode: { $0.encoded() })
+    self.init(change, initial, key: key, read: { ($0 as? String).flatMap(ShortcutBinding.init(encoded:)) }, encode: { $0.encoded() })
   }
 
   func load(_ defaults: UserDefaults) {

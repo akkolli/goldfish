@@ -1,5 +1,5 @@
 import AppKit
-import CommonCrypto
+import CryptoKit
 import Darwin
 import Foundation
 import SQLite3
@@ -389,23 +389,7 @@ final class ClipboardStore {
 
   func hashString(_ value: String) -> String { hashData(Data(value.utf8)) }
 
-  func hashData(_ data: Data) -> String {
-    var digest = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-    data.withUnsafeBytes { bytes in _ = CC_SHA256(bytes.baseAddress, CC_LONG(bytes.count), &digest) }
-    return hexString(digest)
-  }
-
-  private func hexString(_ bytes: [UInt8]) -> String {
-    var output: [UInt8] = []
-    output.reserveCapacity(bytes.count * 2)
-    for byte in bytes {
-      output.append(hexDigit(byte >> 4))
-      output.append(hexDigit(byte & 0x0f))
-    }
-    return String(decoding: output, as: UTF8.self)
-  }
-
-  private func hexDigit(_ value: UInt8) -> UInt8 { value < 10 ? value + 48 : value + 87 }
+  func hashData(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
   private func openDatabase() {
     if sqlite3_open(dbURL.path, &db) != SQLITE_OK {
@@ -551,15 +535,7 @@ final class ClipboardStore {
 
   private func loadFromDatabase() {
     guard let db else { return }
-    let query = """
-        SELECT
-          id, kind, display_text, payload, payload_hash, created_at,
-          last_used_at, use_count, source_app, source_app_bundle_id,
-          image_path, thumbnail_path, is_pinned, ocr_text, collection_name,
-          custom_title, source_device_name
-        FROM clipboard_items
-        ORDER BY created_at DESC, last_used_at DESC
-      """
+    let query = "SELECT \(Self.columns.joined(separator: ", ")) FROM clipboard_items ORDER BY created_at DESC, last_used_at DESC;"
 
     var statement: OpaquePointer?
     defer { sqlite3_finalize(statement) }
@@ -599,46 +575,26 @@ final class ClipboardStore {
         return (value, canEncryptForMigration(), false)
       }
 
-      let displayTextValue = stringValue(2)
-      let payloadValue = stringValue(3)
-      let payloadHashValue = stringValue(4)
-      guard let displayText = displayTextValue.value, let payload = payloadValue.value, let payloadHash = payloadHashValue.value else {
-        hadDecodeFailure = hadDecodeFailure || displayTextValue.decodeFailed || payloadValue.decodeFailed || payloadHashValue.decodeFailed
-        continue
+      let required = [2, 3, 4].map { stringValue(Int32($0)) }
+      hadDecodeFailure = hadDecodeFailure || required.contains { $0.decodeFailed }
+      guard let displayText = required[0].value, let payload = required[1].value, let hash = required[2].value else { continue }
+      needsEncryptionMigration = needsEncryptionMigration || required.contains { $0.migrationNeeded }
+      var item = ClipboardItem(
+        id: id, kind: kind, displayText: displayText, payload: payload, payloadHash: hash,
+        createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5)),
+        lastUsedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 6)), useCount: Int(sqlite3_column_int64(statement, 7)),
+        isPinned: sqlite3_column_int(statement, 12) != 0)
+      for (index, key) in Self.optionalTextColumns {
+        let field = stringValue(index)
+        item[keyPath: key] = field.value
+        needsEncryptionMigration = needsEncryptionMigration || field.migrationNeeded
+        hadDecodeFailure = hadDecodeFailure || field.decodeFailed
       }
-      needsEncryptionMigration =
-        needsEncryptionMigration || displayTextValue.migrationNeeded || payloadValue.migrationNeeded || payloadHashValue.migrationNeeded
-      hadDecodeFailure = hadDecodeFailure || displayTextValue.decodeFailed || payloadValue.decodeFailed || payloadHashValue.decodeFailed
-
-      let createdAt = Date(timeIntervalSince1970: sqlite3_column_double(statement, 5))
-      let lastUsedAt = Date(timeIntervalSince1970: sqlite3_column_double(statement, 6))
-      let useCount = Int(sqlite3_column_int64(statement, 7))
-      let sourceAppValue = stringValue(8)
-      let sourceAppBundleIdValue = stringValue(9)
-      let imagePathValue = stringValue(10)
-      let thumbnailPathValue = stringValue(11)
-      let isPinned = sqlite3_column_int(statement, 12) != 0
-      let ocrTextValue = stringValue(13)
-      let collectionNameValue = stringValue(14)
-      let customTitleValue = stringValue(15)
-      let sourceDeviceNameValue = stringValue(16)
-
-      needsEncryptionMigration =
-        needsEncryptionMigration || sourceAppValue.migrationNeeded || sourceAppBundleIdValue.migrationNeeded
-        || imagePathValue.migrationNeeded || thumbnailPathValue.migrationNeeded || ocrTextValue.migrationNeeded
-        || collectionNameValue.migrationNeeded || customTitleValue.migrationNeeded || sourceDeviceNameValue.migrationNeeded
-      hadDecodeFailure =
-        hadDecodeFailure || sourceAppValue.decodeFailed || sourceAppBundleIdValue.decodeFailed || imagePathValue.decodeFailed
-        || thumbnailPathValue.decodeFailed || ocrTextValue.decodeFailed || collectionNameValue.decodeFailed || customTitleValue.decodeFailed
-        || sourceDeviceNameValue.decodeFailed
-
-      loaded.append(
-        ClipboardItem(
-          id: id, kind: kind, displayText: displayText, payload: payload, payloadHash: payloadHash, createdAt: createdAt,
-          lastUsedAt: lastUsedAt, useCount: useCount, sourceApp: sourceAppValue.value, imagePath: imagePathValue.value,
-          thumbnailPath: thumbnailPathValue.value, isPinned: isPinned, sourceAppBundleId: sourceAppBundleIdValue.value,
-          ocrText: ocrTextValue.value, collectionName: collectionNameValue.value, customTitle: customTitleValue.value,
-          sourceDeviceName: sourceDeviceNameValue.value ?? ClipboardItem.localDeviceName))
+      // The constructor normalizes these values; loading through key paths must
+      // apply the same normalization after all fields have been decrypted.
+      item.customTitle = ClipboardItem.normalizedCustomTitle(item.customTitle)
+      item.sourceDeviceName = ClipboardItem.normalizedDeviceName(item.sourceDeviceName ?? ClipboardItem.localDeviceName)
+      loaded.append(item)
     }
 
     if result != SQLITE_DONE { loadWarningMessage = "Goldfish could not finish reading history. Existing files are untouched." }
@@ -658,14 +614,19 @@ final class ClipboardStore {
     }
   }
 
-  private static let insertSQL = """
-      INSERT OR REPLACE INTO clipboard_items (
-        id, kind, display_text, payload, payload_hash,
-        created_at, last_used_at, use_count, source_app,
-        source_app_bundle_id, image_path, thumbnail_path, is_pinned, ocr_text,
-        collection_name, custom_title, source_device_name
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-    """
+  // Zero-based SELECT indexes; INSERT bindings use the same order plus one.
+  private static let columns = [
+    "id", "kind", "display_text", "payload", "payload_hash", "created_at", "last_used_at", "use_count", "source_app",
+    "source_app_bundle_id", "image_path", "thumbnail_path", "is_pinned", "ocr_text", "collection_name", "custom_title",
+    "source_device_name",
+  ]
+  private static let optionalTextColumns: [(Int32, WritableKeyPath<ClipboardItem, String?>)] = [
+    (8, \.sourceApp), (9, \.sourceAppBundleId), (10, \.imagePath), (11, \.thumbnailPath), (13, \.ocrText), (14, \.collectionName),
+    (15, \.customTitle), (16, \.sourceDeviceName),
+  ]
+  private static let insertSQL =
+    "INSERT OR REPLACE INTO clipboard_items (\(columns.joined(separator: ", "))) VALUES ("
+    + Array(repeating: "?", count: columns.count).joined(separator: ", ") + ");"
 
   @discardableResult private func saveAll(_ items: [ClipboardItem]) -> Bool {
     transaction { execute("DELETE FROM clipboard_items;") && insert(items) }
@@ -730,14 +691,7 @@ final class ClipboardStore {
     sqlite3_bind_double(statement, 6, item.createdAt.timeIntervalSince1970)
     sqlite3_bind_double(statement, 7, item.lastUsedAt.timeIntervalSince1970)
     sqlite3_bind_int64(statement, 8, Int64(item.useCount))
-    bindText(statement, 9, encryptionService.protect(item.sourceApp))
-    bindText(statement, 10, encryptionService.protect(item.sourceAppBundleId))
-    bindText(statement, 11, encryptionService.protect(item.imagePath))
-    bindText(statement, 12, encryptionService.protect(item.thumbnailPath))
     sqlite3_bind_int(statement, 13, item.isPinned ? 1 : 0)
-    bindText(statement, 14, encryptionService.protect(item.ocrText))
-    bindText(statement, 15, encryptionService.protect(item.collectionName))
-    bindText(statement, 16, encryptionService.protect(item.customTitle))
-    bindText(statement, 17, encryptionService.protect(item.sourceDeviceName))
+    for (index, key) in Self.optionalTextColumns { bindText(statement, index + 1, encryptionService.protect(item[keyPath: key])) }
   }
 }

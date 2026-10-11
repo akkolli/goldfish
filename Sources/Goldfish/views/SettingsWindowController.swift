@@ -67,8 +67,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     settings.observe { [weak self] change in
       DispatchQueue.main.async {
         guard let self else { return }
-        if change == .captureStatus { self.setCaptureStatusLabel(self.settings.captureStatusMessage) }
-        else { self.refreshFromSettings() }
+        if change == .captureStatus { self.setCaptureStatusLabel(self.settings.captureStatusMessage) } else { self.refreshFromSettings() }
       }
     }
     refreshFromSettings(refreshCloudSyncStatus: true)
@@ -94,19 +93,19 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     tabView.addTabViewItem(tab("Performance", performanceSettingsView()))
     tabView.addTabViewItem(tab("Data", dataSettingsView()))
 
-    [launchStatusLabel, shortcutStatusLabel, captureStatusLabel, accessibilityStatusLabel,
-      pasteStatusLabel, dataStatusLabel, cloudSyncStatusLabel].forEach(configureStatusLabel)
+    [
+      launchStatusLabel, shortcutStatusLabel, captureStatusLabel, accessibilityStatusLabel, pasteStatusLabel, dataStatusLabel,
+      cloudSyncStatusLabel,
+    ].forEach(configureStatusLabel)
     let sidebar = NSVisualEffectView()
     sidebar.material = .sidebar
     sidebar.blendingMode = .behindWindow
     sidebar.state = .active
-    let brand = NSTextField(labelWithString: "Goldfish")
-    brand.font = .systemFont(ofSize: 19, weight: .semibold)
+    let brand = NativeUI.label("Goldfish", font: .systemFont(ofSize: 19, weight: .semibold))
     let brandIcon = NSImageView(image: NSImage(systemSymbolName: "fish.fill", accessibilityDescription: nil) ?? NSImage())
     brandIcon.contentTintColor = ClipboardShelfStyle.brandAccent
     brandIcon.widthAnchor.constraint(equalToConstant: 26).isActive = true
-    let brandRow = NSStackView(views: [brandIcon, brand])
-    brandRow.spacing = 8
+    let brandRow = NativeUI.stack([brandIcon, brand], spacing: 8)
     let symbols = ["slider.horizontal.3", "command", "doc.on.clipboard", "lock.shield", "speedometer", "externaldrive"]
     let navigation = NSStackView()
     navigation.orientation = .vertical
@@ -175,8 +174,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   private func tab(_ title: String, _ view: NSView) -> NSTabViewItem {
     let item = NSTabViewItem(identifier: title)
     item.label = title
-    let heading = NSTextField(labelWithString: title)
-    heading.font = .systemFont(ofSize: 25, weight: .bold)
+    let heading = NativeUI.label(title, font: .systemFont(ofSize: 25, weight: .bold))
     let subtitles = [
       "General": "Make Goldfish feel at home on your Mac.", "Shortcuts": "Keep your hands on the keyboard.",
       "Capture": "Choose what your clipboard remembers.", "Privacy": "Control how your history is stored and shared.",
@@ -184,10 +182,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     ]
     let introduction = caption(subtitles[title] ?? "")
     introduction.font = .systemFont(ofSize: 13)
-    let header = NSStackView(views: [heading, introduction])
-    header.orientation = .vertical
-    header.alignment = .leading
-    header.spacing = 7
+    let header = NativeUI.stack([heading, introduction], axis: .vertical, alignment: .leading, spacing: 7)
     let content = page([header, view])
     content.setCustomSpacing(24, after: header)
     item.view = SettingsPageScrollView(page: content)
@@ -201,58 +196,77 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     stepper.maxValue = Double(AppConfiguration.maxHistoryLength)
     stepper.increment = 25
     stepper.setAccessibilityLabel("History length")
-    bind(stepper, change: .maxHistoryItems, read: { [settings] in
-      stepper.integerValue = settings.maxHistoryItems
-      historyLabel.stringValue = "\(settings.maxHistoryItems) clips"
-    }, write: { [settings] in settings.maxHistoryItems = stepper.integerValue })
+    bind(
+      stepper, change: .maxHistoryItems,
+      read: { [settings] in
+        stepper.integerValue = settings.maxHistoryItems
+        historyLabel.stringValue = "\(settings.maxHistoryItems) clips"
+      }, write: { [settings] in settings.maxHistoryItems = stepper.integerValue })
     let sort = NSPopUpButton()
     for (index, title) in ["Newest first", "Most used first"].enumerated() {
       sort.addItem(withTitle: title)
       sort.lastItem?.representedObject = index
     }
     sort.setAccessibilityLabel("Sort order")
-    bind(sort, change: .other, read: { [settings] in sort.selectItem(at: settings.sortByUsage ? 1 : 0) },
+    bind(
+      sort, change: .other, read: { [settings] in sort.selectItem(at: settings.sortByUsage ? 1 : 0) },
       write: { [settings] in settings.sortByUsage = sort.indexOfSelectedItem == 1 })
-    keepFirstImageButton = toggle("Reuse the original image for duplicate copies", \.keepFirstImage, .keepFirstImage,
+    keepFirstImageButton = toggle(
+      "Reuse the original image for duplicate copies", \.keepFirstImage, .keepFirstImage,
       help: "When duplicate items are ignored, keep the first stored image file. The clip still moves to the top of recent history.")
     goldMenuBarIconButton = toggle("Gold menu bar icon", \.goldMenuBarIcon, .goldMenuBarIcon)
     let side = popup("Shelf side", \.panelSide, .panelSide, ClipboardPanelSide.allCases, title: { $0.title })
     shelfSideRow = labeledRow("Shelf side", side)
-    let launch = toggle("Launch at login", \.launchAtLogin, .launchAtLogin) { controller in
-      if !controller.settings.launchAtLogin { controller.settings.setLaunchAtLoginStatus(message: "") }
-      controller.refreshFromSettings()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak controller] in controller?.refreshFromSettings() }
-    }
-    let menu = toggle("Show Goldfish in the menu bar", \.showMenuBarIcon, .showMenuBarIcon) { controller in
-      if !controller.settings.showMenuBarIcon && !controller.settings.showDockIcon { controller.settings.showDockIcon = true }
-      controller.refreshFromSettings()
-    }
-    let dock = toggle("Show Goldfish in the Dock", \.showDockIcon, .showDockIcon) { controller in
-      if !controller.settings.showDockIcon && !controller.settings.showMenuBarIcon { controller.settings.showMenuBarIcon = true }
-      controller.refreshFromSettings()
-    }
+    let launch = toggle(
+      "Launch at login", \.launchAtLogin, .launchAtLogin,
+      after: { controller in
+        if !controller.settings.launchAtLogin { controller.settings.setLaunchAtLoginStatus(message: "") }
+        controller.refreshFromSettings()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak controller] in controller?.refreshFromSettings() }
+      })
+    let menu = toggle(
+      "Show Goldfish in the menu bar", \.showMenuBarIcon, .showMenuBarIcon,
+      after: { controller in
+        if !controller.settings.showMenuBarIcon && !controller.settings.showDockIcon { controller.settings.showDockIcon = true }
+        controller.refreshFromSettings()
+      })
+    let dock = toggle(
+      "Show Goldfish in the Dock", \.showDockIcon, .showDockIcon,
+      after: { controller in
+        if !controller.settings.showDockIcon && !controller.settings.showMenuBarIcon { controller.settings.showMenuBarIcon = true }
+        controller.refreshFromSettings()
+      })
     return page([
-      section("History", [
-        labeledRow("Keep history", popup("Keep history", \.historyRetention, .historyRetention, HistoryRetention.allCases, title: { $0.title })),
-        labeledRow("Clip limit", row([historyLabel, stepper])),
-        toggle("Ignore duplicate items", \.pruneDuplicates, .pruneDuplicates), keepFirstImageButton]),
-      section("Shelf", [
-        labeledRow("Sort order", sort),
-        labeledRow("Layout", popup("Shelf layout", \.shelfLayout, .other, ClipboardShelfLayout.allCases, title: { $0.title })),
-        shelfSideRow!,
-        labeledRow("Shelf size", popup("Shelf size", \.shelfWidth, .other, ClipboardShelfWidth.allCases, title: { $0.title })),
-        toggle("Larger text in clips", \.largerShelfText, .other)]),
-      soundSettingsSection(),
-      section("Startup & visibility", [launch, menu, goldMenuBarIconButton, dock, launchStatusLabel]),
+      section(
+        "History",
+        [
+          labeledRow(
+            "Keep history", popup("Keep history", \.historyRetention, .historyRetention, HistoryRetention.allCases, title: { $0.title })),
+          labeledRow("Clip limit", row([historyLabel, stepper])), toggle("Ignore duplicate items", \.pruneDuplicates, .pruneDuplicates),
+          keepFirstImageButton,
+        ]),
+      section(
+        "Shelf",
+        [
+          labeledRow("Sort order", sort),
+          labeledRow("Layout", popup("Shelf layout", \.shelfLayout, .other, ClipboardShelfLayout.allCases, title: { $0.title })),
+          shelfSideRow!,
+          labeledRow("Shelf size", popup("Shelf size", \.shelfWidth, .other, ClipboardShelfWidth.allCases, title: { $0.title })),
+          toggle("Larger text in clips", \.largerShelfText, .other),
+        ]), soundSettingsSection(), section("Startup & visibility", [launch, menu, goldMenuBarIconButton, dock, launchStatusLabel]),
     ])
   }
 
   private func soundSettingsSection() -> NSView {
     let soundRows: [NSView] = [
-      ("Copy sound", \SettingsModel.copySoundEnabled, ClipboardSound.copy,
-       "Play a soft camera click when a copy is captured from any app, or copied from Goldfish."),
-      ("Paste sound", \SettingsModel.pasteSoundEnabled, ClipboardSound.paste,
-       "Play a soft camera click when Goldfish sends a paste to another app."),
+      (
+        "Copy sound", \SettingsModel.copySoundEnabled, ClipboardSound.copy,
+        "Play a soft camera click when a copy is captured from any app, or copied from Goldfish."
+      ),
+      (
+        "Paste sound", \SettingsModel.pasteSoundEnabled, ClipboardSound.paste,
+        "Play a soft camera click when Goldfish sends a paste to another app."
+      ),
     ].map { title, key, sound, help in
       let preview = ShelfNavigationButton()
       preview.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)
@@ -266,15 +280,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
       soundPreviews.append(preview)
       let space = NSView()
       space.setContentHuggingPriority(.defaultLow, for: .horizontal)
-      let result = NSStackView(views: [toggle(title, key, .soundEffects, help: help), space, preview])
-      result.alignment = .centerY
-      result.spacing = 8
+      let result = NativeUI.stack([toggle(title, key, .soundEffects, help: help), space, preview], alignment: .centerY, spacing: 8)
       return result
     }
-    let value = NSTextField(labelWithString: "")
-    value.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-    value.textColor = .secondaryLabelColor
-    value.alignment = .right
+    let value = NativeUI.label(
+      "", font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular), color: .secondaryLabelColor, alignment: .right)
     value.widthAnchor.constraint(equalToConstant: 40).isActive = true
     let slider = NSSlider()
     slider.minValue = 0
@@ -283,46 +293,67 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     slider.setAccessibilityLabel("Sound effects volume")
     slider.setAccessibilityHelp("Percentage of your Mac's current output volume.")
     slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
-    bind(slider, change: .soundEffects, read: { [settings] in
-      slider.doubleValue = settings.soundVolume * 100
-      value.stringValue = "\(Int((settings.soundVolume * 100).rounded()))%"
-    }, write: { [settings] in settings.soundVolume = slider.doubleValue / 100 })
+    bind(
+      slider, change: .soundEffects,
+      read: { [settings] in
+        slider.doubleValue = settings.soundVolume * 100
+        value.stringValue = "\(Int((settings.soundVolume * 100).rounded()))%"
+      }, write: { [settings] in settings.soundVolume = slider.doubleValue / 100 })
     let title = NSTextField(labelWithString: "Volume")
     title.widthAnchor.constraint(equalToConstant: Metrics.settingsLabelWidth).isActive = true
-    let volume = NSStackView(views: [title, slider, value])
-    volume.alignment = .centerY
-    volume.spacing = 8
+    let volume = NativeUI.stack([title, slider, value], alignment: .centerY, spacing: 8)
     return section("Sound effects", soundRows + [volume, caption("Soft camera clicks for captured copies and Goldfish pastes.")])
   }
 
   private func captureSettingsView() -> NSView {
     let pause = toggle("Pause clipboard capture", \.pauseCapture, .pauseCapture, before: { $0.settings.pauseCaptureUntil = nil })
-    let allowed = [("Text", ClipboardItemKind.text), ("Code", .code), ("Links", .url), ("Images", .image),
-      ("Colors", .color), ("Audio", .audio), ("Videos", .video), ("Rich text", .richText), ("PDFs", .pdf), ("Files", .file)]
-      .map { kindCheckbox($0.0, $0.1) }
+    let allowed = [
+      ("Text", ClipboardItemKind.text), ("Code", .code), ("Links", .url), ("Images", .image), ("Colors", .color), ("Audio", .audio),
+      ("Videos", .video), ("Rich text", .richText), ("PDFs", .pdf), ("Files", .file),
+    ].map { kindCheckbox($0.0, $0.1) }
     return page([
-      section("Capture", [pause,
-        toggle("Exclude likely secrets", \.excludeSensitive, .excludeSensitive),
-        toggle("Search in image labels", \.includeImageTextInSearch, .includeImageTextInSearch), captureStatusLabel]),
-      section("Allowed content types", [checkboxGrid(allowed)]),
-      section("Ignored source apps", [caption(
-        "macOS does not identify which app wrote the clipboard. Goldfish applies this list to the app that is frontmost when it notices the change."),
-        IgnoredAppsEditor(settings: settings)]),
+      section(
+        "Capture",
+        [
+          pause, toggle("Exclude likely secrets", \.excludeSensitive, .excludeSensitive),
+          toggle("Search in image labels", \.includeImageTextInSearch, .includeImageTextInSearch), captureStatusLabel,
+        ]), section("Allowed content types", [checkboxGrid(allowed)]),
+      section(
+        "Ignored source apps",
+        [
+          caption(
+            "macOS does not identify which app wrote the clipboard. Goldfish applies this list to the app that is frontmost when it notices the change."
+          ), IgnoredAppsEditor(settings: settings),
+        ]),
     ])
   }
 
   private func privacySettingsView() -> NSView {
     page([
-      section("Local storage", [caption(
-        "History stays in Application Support, encrypted with a local key. Capture pauses if the key is unavailable; storage is restricted to the current user."),
-        toggle("Clear history on quit", \.clearHistoryOnQuit, .clearHistoryOnQuit)]),
-      section("Screen privacy", [caption(
-        "Requests that supported capture tools exclude the shelf. This is not a guarantee; close the shelf before sharing sensitive content."),
-        toggle("Hide panel from screen sharing and recordings", \.hideFromScreenCapture, .hideFromScreenCapture)]),
-      section("Paste permission", [caption("Clipboard capture works without this permission. Grant Accessibility only for direct paste."),
-        row([NSTextField(labelWithString: "Accessibility"), accessibilityStatusLabel]),
-        row([button("Open Accessibility Settings", { $0.requestAccessibilityAccess() }),
-             button("Refresh Permission Status", { $0.refreshAccessibilityPermissionStatus() })]), pasteStatusLabel]),
+      section(
+        "Local storage",
+        [
+          caption(
+            "History stays in Application Support, encrypted with a local key. Capture pauses if the key is unavailable; storage is restricted to the current user."
+          ), toggle("Clear history on quit", \.clearHistoryOnQuit, .clearHistoryOnQuit),
+        ]),
+      section(
+        "Screen privacy",
+        [
+          caption(
+            "Requests that supported capture tools exclude the shelf. This is not a guarantee; close the shelf before sharing sensitive content."
+          ), toggle("Hide panel from screen sharing and recordings", \.hideFromScreenCapture, .hideFromScreenCapture),
+        ]),
+      section(
+        "Paste permission",
+        [
+          caption("Clipboard capture works without this permission. Grant Accessibility only for direct paste."),
+          row([NSTextField(labelWithString: "Accessibility"), accessibilityStatusLabel]),
+          row([
+            button("Open Accessibility Settings", { $0.requestAccessibilityAccess() }),
+            button("Refresh Permission Status", { $0.refreshAccessibilityPermissionStatus() }),
+          ]), pasteStatusLabel,
+        ]),
     ])
   }
 
@@ -333,44 +364,69 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     slider.setAccessibilityLabel("Preview storage limit in megabytes")
     let value = NSTextField(labelWithString: "")
     configureStatusLabel(value)
-    bind(slider, change: .imageCacheMaxBytes, read: { [settings] in
-      slider.doubleValue = Double(settings.imageCacheMaxBytes) / 1024 / 1024
-      value.stringValue = "\(Int(slider.doubleValue.rounded())) MB for previews. Original clips are stored separately."
-    }, write: { [settings] in settings.imageCacheMaxBytes = Int64(slider.doubleValue.rounded()) * 1024 * 1024 })
+    bind(
+      slider, change: .imageCacheMaxBytes,
+      read: { [settings] in
+        slider.doubleValue = Double(settings.imageCacheMaxBytes) / 1024 / 1024
+        value.stringValue = "\(Int(slider.doubleValue.rounded())) MB for previews. Original clips are stored separately."
+      }, write: { [settings] in settings.imageCacheMaxBytes = Int64(slider.doubleValue.rounded()) * 1024 * 1024 })
     return page([
-      section("Capture responsiveness", [
-        labeledRow("Responsiveness", popup("Capture responsiveness", \.pollProfileRaw, .pollProfile,
-          AppConfiguration.PollProfile.allCases, title: { $0.title })),
-        caption("Faster checks catch rapid copies sooner. Slower checks use less energy when you are copying frequently.")]),
-      section("Preview storage", [labeledRow("Limit (MB)", slider), value]),
+      section(
+        "Capture responsiveness",
+        [
+          labeledRow(
+            "Responsiveness",
+            popup("Capture responsiveness", \.pollProfileRaw, .pollProfile, AppConfiguration.PollProfile.allCases, title: { $0.title })),
+          caption("Faster checks catch rapid copies sooner. Slower checks use less energy when you are copying frequently."),
+        ]), section("Preview storage", [labeledRow("Limit (MB)", slider), value]),
     ])
   }
 
   private func dataSettingsView() -> NSView {
-    let cloud = toggle("Back up history to iCloud", \.iCloudSyncEnabled, .cloudSync) { controller in
-      controller.settings.setCloudSyncStatus(message: "")
-      controller.refreshCloudSyncControls(refreshStatus: controller.settings.iCloudSyncEnabled && controller.cachedCloudSyncStatus == nil)
-    }
-    cloudActions = [button("Back Up Now", { $0.pushICloudSyncArchive() }),
-      button("Restore from iCloud", { $0.pullICloudSyncArchive() }), button("Reveal Backup File", { $0.revealICloudSyncFile() })]
-    archiveActions = [button("Export Archive...", { $0.exportClipboardArchive() }), button("Import Archive...", { $0.importClipboardArchive() })]
+    let cloud = toggle(
+      "Back up history to iCloud", \.iCloudSyncEnabled, .cloudSync,
+      after: { controller in
+        controller.settings.setCloudSyncStatus(message: "")
+        controller.refreshCloudSyncControls(refreshStatus: controller.settings.iCloudSyncEnabled && controller.cachedCloudSyncStatus == nil)
+      })
+    cloudActions = [
+      button("Back Up Now", { $0.pushICloudSyncArchive() }), button("Restore from iCloud", { $0.pullICloudSyncArchive() }),
+      button("Reveal Backup File", { $0.revealICloudSyncFile() }),
+    ]
+    archiveActions = [
+      button("Export Archive...", { $0.exportClipboardArchive() }), button("Import Archive...", { $0.importClipboardArchive() }),
+    ]
     dataStatusLabel.isHidden = true
     return page([
-      section("iCloud Backup", [caption(
-        "Keep a backup of your history in iCloud and restore it when needed. Changes don’t sync between Macs. Backups are not encrypted by Goldfish."),
-        cloud, row(cloudActions), cloudSyncStatusLabel]),
-      section("Archive", [caption(
-        "Export your history, Pinboards, and saved attachments. External files stay in their original locations. Archives are not encrypted."),
-        row(archiveActions)]),
-      section("Data", [button("Open History Folder", { $0.openHistoryFolder() }),
-        row([button("Clear Clipboard History", { $0.clearClipboardHistory() }),
-             button("Clear Thumbnail Cache", { $0.clearThumbnailCache() })]), dataStatusLabel]),
+      section(
+        "iCloud Backup",
+        [
+          caption(
+            "Keep a backup of your history in iCloud and restore it when needed. Changes don’t sync between Macs. Backups are not encrypted by Goldfish."
+          ), cloud, row(cloudActions), cloudSyncStatusLabel,
+        ]),
+      section(
+        "Archive",
+        [
+          caption(
+            "Export your history, Pinboards, and saved attachments. External files stay in their original locations. Archives are not encrypted."
+          ), row(archiveActions),
+        ]),
+      section(
+        "Data",
+        [
+          button("Open History Folder", { $0.openHistoryFolder() }),
+          row([
+            button("Clear Clipboard History", { $0.clearClipboardHistory() }),
+            button("Clear Thumbnail Cache", { $0.clearThumbnailCache() }),
+          ]), dataStatusLabel,
+        ]),
     ])
   }
 
   private func toggle(
-    _ title: String, _ key: ReferenceWritableKeyPath<SettingsModel, Bool>, _ change: SettingsModel.Change,
-    help: String? = nil, before: @escaping (SettingsWindowController) -> Void = { _ in }, after: @escaping (SettingsWindowController) -> Void = { _ in }
+    _ title: String, _ key: ReferenceWritableKeyPath<SettingsModel, Bool>, _ change: SettingsModel.Change, help: String? = nil,
+    before: @escaping (SettingsWindowController) -> Void = { _ in }, after: @escaping (SettingsWindowController) -> Void = { _ in }
   ) -> NSButton {
     let control = NSButton()
     control.setButtonType(.switch)
@@ -378,17 +434,19 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     control.setAccessibilityLabel(title)
     control.toolTip = help
     control.setAccessibilityHelp(help)
-    bind(control, change: change, read: { [settings] in control.state = settings[keyPath: key] ? .on : .off }, write: { [weak self, settings] in
-      if let self { before(self) }
-      settings[keyPath: key] = control.state == .on
-      if let self { after(self) }
-    })
+    bind(
+      control, change: change, read: { [settings] in control.state = settings[keyPath: key] ? .on : .off },
+      write: { [weak self, settings] in
+        if let self { before(self) }
+        settings[keyPath: key] = control.state == .on
+        if let self { after(self) }
+      })
     return control
   }
 
   private func popup<Value: RawRepresentable>(
-    _ label: String, _ key: ReferenceWritableKeyPath<SettingsModel, Value>, _ change: SettingsModel.Change,
-    _ values: [Value], title: (Value) -> String
+    _ label: String, _ key: ReferenceWritableKeyPath<SettingsModel, Value>, _ change: SettingsModel.Change, _ values: [Value],
+    title: (Value) -> String
   ) -> NSPopUpButton where Value.RawValue == Int {
     let control = NSPopUpButton()
     control.setAccessibilityLabel(label)
@@ -405,9 +463,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     return control
   }
 
-  private func bind(_ control: NSControl, change: SettingsModel.Change = .other, read: @escaping () -> Void = {}, write: @escaping () -> Void) {
-    controlBindings.append(SettingsControlBinding(control: control, change: change, read: read, write: write))
-  }
+  private func bind(
+    _ control: NSControl, change: SettingsModel.Change = .other, read: @escaping () -> Void = {}, write: @escaping () -> Void
+  ) { controlBindings.append(SettingsControlBinding(control: control, change: change, read: read, write: write)) }
   private func shortcutSettingsView() -> NSView {
     let openRow = shortcutRow("Open Clipboard", binding: settings.openShortcut, baseTag: 100)
     let settingsRow = shortcutRow("Open Settings", binding: settings.settingsShortcut, baseTag: 200)
@@ -433,37 +491,23 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   }
 
   private func shortcutReference(_ title: String, keys: String) -> NSView {
-    let label = NSTextField(labelWithString: title)
-    label.font = .systemFont(ofSize: 12)
-    let key = NSTextField(labelWithString: keys)
-    key.font = .monospacedSystemFont(ofSize: 12, weight: .medium)
-    key.textColor = ClipboardShelfStyle.secondaryText
+    let label = NativeUI.label(title, font: .systemFont(ofSize: 12))
+    let key = NativeUI.label(keys, font: .monospacedSystemFont(ofSize: 12, weight: .medium), color: ClipboardShelfStyle.secondaryText)
     let spacer = NSView()
     spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-    let row = NSStackView(views: [label, spacer, key])
-    row.alignment = .centerY
+    let row = NativeUI.stack([label, spacer, key], alignment: .centerY)
     return row
   }
 
   private func page(_ views: [NSView]) -> NSStackView {
-    let stack = NSStackView(views: views)
-    stack.orientation = .vertical
-    stack.alignment = .leading
-    stack.spacing = 16
-    stack.detachesHiddenViews = true
+    let stack = NativeUI.stack(views, axis: .vertical, alignment: .leading, spacing: 16, detachHidden: true)
     for view in views { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
     return stack
   }
 
   private func section(_ title: String, _ views: [NSView]) -> NSView {
-    let titleLabel = NSTextField(labelWithString: title)
-    titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-    titleLabel.textColor = .labelColor
-    let stack = NSStackView(views: [titleLabel] + views)
-    stack.orientation = .vertical
-    stack.alignment = .leading
-    stack.spacing = 12
-    stack.detachesHiddenViews = true
+    let titleLabel = NativeUI.label(title, font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
+    let stack = NativeUI.stack([titleLabel] + views, axis: .vertical, alignment: .leading, spacing: 12, detachHidden: true)
     stack.translatesAutoresizingMaskIntoConstraints = false
     let surface = SettingsSectionView()
     surface.addSubview(stack)
@@ -480,26 +524,17 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   private func row(_ views: [NSView]) -> NSView {
     let spacer = NSView()
     spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-    let stack = NSStackView(views: views + [spacer])
-    stack.orientation = .horizontal
-    stack.alignment = .centerY
-    stack.distribution = .fill
-    stack.spacing = 8
+    let stack = NativeUI.stack(views + [spacer], axis: .horizontal, alignment: .centerY, spacing: 8, distribution: .fill)
     stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     return stack
   }
 
   private func checkboxGrid(_ controls: [NSButton]) -> NSView {
     let rows = stride(from: 0, to: controls.count, by: 2).map { index in
-      let pair = NSStackView(views: Array(controls[index..<min(index + 2, controls.count)]))
-      pair.distribution = .fillEqually
-      pair.spacing = 12
+      let pair = NativeUI.stack(Array(controls[index..<min(index + 2, controls.count)]), spacing: 12, distribution: .fillEqually)
       return pair
     }
-    let grid = NSStackView(views: rows)
-    grid.orientation = .vertical
-    grid.alignment = .leading
-    grid.spacing = 8
+    let grid = NativeUI.stack(rows, axis: .vertical, alignment: .leading, spacing: 8)
     for row in rows { row.widthAnchor.constraint(equalTo: grid.widthAnchor).isActive = true }
     return grid
   }
@@ -510,18 +545,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     label.setContentCompressionResistancePriority(.required, for: .horizontal)
     control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     if control is NSSlider {
-      let result = NSStackView(views: [label, control])
-      result.alignment = .centerY
-      result.spacing = 8
+      let result = NativeUI.stack([label, control], alignment: .centerY, spacing: 8)
       return result
     }
     return row([label, control])
   }
 
   private func caption(_ text: String) -> NSTextField {
-    let label = NSTextField(wrappingLabelWithString: text)
-    label.textColor = ClipboardShelfStyle.secondaryText
-    label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    let label = NativeUI.label(
+      text, wrap: true, font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: ClipboardShelfStyle.secondaryText)
     label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     return label
   }
@@ -629,9 +661,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     let message = status.clipboardTrimmed
     guard !message.isEmpty else { return empty }
     let folded = message.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")).lowercased()
-    let color = rules.first { rule in
-      rule.prefixes.contains(where: folded.hasPrefix) || rule.fragments.contains(where: folded.contains)
-    }?.color ?? .secondaryLabelColor
+    let color =
+      rules.first { rule in rule.prefixes.contains(where: folded.hasPrefix) || rule.fragments.contains(where: folded.contains) }?.color
+      ?? .secondaryLabelColor
     return (message, color)
   }
 
@@ -640,12 +672,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   }
 
   static func captureStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
-    present(storedStatus, empty: ("Capture status will appear after the app sees clipboard activity.", .secondaryLabelColor), rules: [
-      .init(prefixes: ["captured", "allowed content types updated"],
-        fragments: ["capture running", "capture is running", "capture resumed"], color: .systemGreen),
-      .init(prefixes: ["error"], fragments: ["failed", "could not"], color: .systemRed),
-      .init(prefixes: ["skipped"], fragments: ["ignored", "paused", "at least one"], color: .systemOrange),
-    ])
+    present(
+      storedStatus, empty: ("Capture status will appear after the app sees clipboard activity.", .secondaryLabelColor),
+      rules: [
+        .init(
+          prefixes: ["captured", "allowed content types updated"], fragments: ["capture running", "capture is running", "capture resumed"],
+          color: .systemGreen), .init(prefixes: ["error"], fragments: ["failed", "could not"], color: .systemRed),
+        .init(prefixes: ["skipped"], fragments: ["ignored", "paused", "at least one"], color: .systemOrange),
+      ])
   }
 
   static func shortcutStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
@@ -653,35 +687,51 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   }
 
   static func accessibilityPermissionStatusPresentation(storedStatus: String, isTrusted: Bool) -> (message: String, textColor: NSColor) {
-    present(storedStatus,
-      empty: isTrusted ? ("Granted", .systemGreen) : ("Not granted (clipboard capture still works; paste falls back to copy)", .systemOrange),
+    present(
+      storedStatus,
+      empty: isTrusted
+        ? ("Granted", .systemGreen) : ("Not granted (clipboard capture still works; paste falls back to copy)", .systemOrange),
       rules: [.init(prefixes: [""], fragments: [], color: .systemOrange)])
   }
 
   static func pasteStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
-    present(storedStatus, empty: ("No paste action yet.", .secondaryLabelColor), rules: [
-      .init(prefixes: [], fragments: ["could not", "failed"], color: .systemRed),
-      .init(prefixes: [], fragments: ["grant accessibility", "not granted"], color: .systemOrange),
-      .init(prefixes: ["pasted", "copied"], fragments: [], color: .systemGreen),
-    ])
+    present(
+      storedStatus, empty: ("No paste action yet.", .secondaryLabelColor),
+      rules: [
+        .init(prefixes: [], fragments: ["could not", "failed"], color: .systemRed),
+        .init(prefixes: [], fragments: ["grant accessibility", "not granted"], color: .systemOrange),
+        .init(prefixes: ["pasted", "copied"], fragments: [], color: .systemGreen),
+      ])
   }
 
   static func dataStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
-    present(storedStatus, empty: ("", .secondaryLabelColor), rules: [
-      .init(prefixes: [], fragments: ["could not", "couldn", "denied", "error", "failed", "invalid", "missing", "not permitted", "unavailable"], color: .systemRed),
-      .init(prefixes: [], fragments: ["skipped"], color: .systemOrange),
-      .init(prefixes: ["exported", "imported", "cleared"], fragments: [], color: .systemGreen),
-    ])
+    present(
+      storedStatus, empty: ("", .secondaryLabelColor),
+      rules: [
+        .init(
+          prefixes: [],
+          fragments: ["could not", "couldn", "denied", "error", "failed", "invalid", "missing", "not permitted", "unavailable"],
+          color: .systemRed), .init(prefixes: [], fragments: ["skipped"], color: .systemOrange),
+        .init(prefixes: ["exported", "imported", "cleared"], fragments: [], color: .systemGreen),
+      ])
   }
 
-  static func cloudSyncStatusPresentation(storedStatus: String, isSyncEnabled: Bool, cloudStatus: ClipboardCloudSyncStatus?) -> (message: String, textColor: NSColor) {
-    let fallback: StatusPresentation = !isSyncEnabled ? ("iCloud Backup is off.", .secondaryLabelColor)
-      : cloudStatus.map { ($0.message, $0.isAvailable ? .secondaryLabelColor : .systemOrange) } ?? ("iCloud Backup is unavailable.", .systemOrange)
-    return present(storedStatus, empty: fallback, rules: [
-      .init(prefixes: [], fragments: ["failed"], color: .systemRed),
-      .init(prefixes: [], fragments: ["unavailable", "turn on", "skipped"], color: .systemOrange),
-      .init(prefixes: ["backed up", "restored", "opened"], fragments: [], color: .systemGreen),
-    ])
+  static func cloudSyncStatusPresentation(storedStatus: String, isSyncEnabled: Bool, cloudStatus: ClipboardCloudSyncStatus?) -> (
+    message: String, textColor: NSColor
+  ) {
+    let fallback: StatusPresentation =
+      !isSyncEnabled
+      ? ("iCloud Backup is off.", .secondaryLabelColor)
+      : cloudStatus.map { ($0.message, $0.isAvailable ? .secondaryLabelColor : .systemOrange) } ?? (
+        "iCloud Backup is unavailable.", .systemOrange
+      )
+    return present(
+      storedStatus, empty: fallback,
+      rules: [
+        .init(prefixes: [], fragments: ["failed"], color: .systemRed),
+        .init(prefixes: [], fragments: ["unavailable", "turn on", "skipped"], color: .systemOrange),
+        .init(prefixes: ["backed up", "restored", "opened"], fragments: [], color: .systemGreen),
+      ])
   }
 
   private func cloudSyncStatus(refresh: Bool) -> ClipboardCloudSyncStatus? {

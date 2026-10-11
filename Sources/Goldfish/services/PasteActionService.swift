@@ -120,24 +120,12 @@ final class PasteActionService {
       guard let imagePath = item.imagePath, let image = cacheService.image(for: imagePath) else { return [] }
       return [image]
 
-    case .pdf:
+    case .pdf, .audio, .video:
       guard let data = cacheService.data(for: item.payload) else { return [] }
+      let type: NSPasteboard.PasteboardType =
+        item.kind == .pdf ? .pdf : (item.kind == .audio ? .sound : VideoPayload.pasteboardType(forPath: item.payload))
       let pasteboardItem = NSPasteboardItem()
-      pasteboardItem.setData(data, forType: .pdf)
-      pasteboardItem.setString(dragLabel(for: item), forType: .string)
-      return [pasteboardItem]
-
-    case .audio:
-      guard let data = cacheService.data(for: item.payload) else { return [] }
-      let pasteboardItem = NSPasteboardItem()
-      pasteboardItem.setData(data, forType: .sound)
-      pasteboardItem.setString(dragLabel(for: item), forType: .string)
-      return [pasteboardItem]
-
-    case .video:
-      guard let data = cacheService.data(for: item.payload) else { return [] }
-      let pasteboardItem = NSPasteboardItem()
-      pasteboardItem.setData(data, forType: VideoPayload.pasteboardType(forPath: item.payload))
+      pasteboardItem.setData(data, forType: type)
       pasteboardItem.setString(dragLabel(for: item), forType: .string)
       return [pasteboardItem]
 

@@ -1,58 +1,5 @@
 import Foundation
 
-enum ClipboardItemKind: Int {
-  case text = 0
-  case url
-  case image
-  case richText
-  case file
-  case unknown
-  case pdf
-  case audio
-  case color
-  case code
-  case video
-
-  var displayName: String {
-    switch self {
-    case .text: return "text"
-    case .url: return "link"
-    case .image: return "image"
-    case .richText: return "rich text"
-    case .file: return "file"
-    case .unknown: return "item"
-    case .pdf: return "PDF"
-    case .audio: return "audio"
-    case .color: return "color"
-    case .code: return "code"
-    case .video: return "video"
-    }
-  }
-}
-
-extension ClipboardItemKind {
-  var canOpen: Bool {
-    switch self {
-    case .url, .file, .image, .pdf, .audio, .video: return true
-    case .text, .richText, .unknown, .color, .code: return false
-    }
-  }
-
-  var canReveal: Bool {
-    switch self {
-    case .file, .image, .pdf, .audio, .video: return true
-    case .text, .richText, .unknown, .url, .color, .code: return false
-    }
-  }
-
-  var hasManagedCacheReference: Bool {
-    switch self {
-    case .url, .image, .pdf, .audio, .richText, .video: return true
-    case .text, .file, .unknown, .color, .code: return false
-    }
-  }
-}
-
 enum ClipboardSortMode: Int {
   case mostRecent = 0
   case mostUsed
@@ -102,14 +49,7 @@ enum ClipboardSortMode: Int {
   }
 }
 
-enum ClipboardCollectionDefaults {
-  static func normalizedName(_ value: String?) -> String? {
-    guard let value else { return nil }
-    let name = value.split { $0.isWhitespace }.joined(separator: " ").clipboardTrimmed
-    guard !name.isEmpty else { return nil }
-    return String(name.prefix(40))
-  }
-}
+enum ClipboardCollectionDefaults { static func normalizedName(_ value: String?) -> String? { value?.clipboardLabel(limit: 40) } }
 
 struct ClipboardItem: Equatable {
   var id: UUID
@@ -146,7 +86,7 @@ struct ClipboardItem: Equatable {
   var linkAddress: String { linkURL?.absoluteString ?? payload }
 
   var searchableText: String {
-    var text = kindLabel + " " + displayText.lowercased() + " " + payload.lowercased()
+    var text = kind.presentation.searchTerms + " " + displayText.lowercased() + " " + payload.lowercased()
     if let customTitle { text += " " + customTitle.lowercased() }
     if let sourceApp { text += " " + sourceApp.lowercased() }
     if let sourceAppBundleId { text += " " + sourceAppBundleId.lowercased() }
@@ -157,26 +97,10 @@ struct ClipboardItem: Equatable {
 
   var effectiveSourceDeviceName: String { ClipboardItem.normalizedDeviceName(sourceDeviceName) ?? Self.localDeviceName }
 
-  private var kindLabel: String {
-    switch kind {
-    case .text: return "text"
-    case .url: return "link url"
-    case .image: return "image"
-    case .richText: return "richtext rtf"
-    case .file: return "file"
-    case .unknown: return "unknown"
-    case .pdf: return "pdf document"
-    case .audio: return "audio sound"
-    case .color: return "color swatch hex"
-    case .code: return "code snippet source programming"
-    case .video: return "video movie mp4 quicktime"
-    }
-  }
-
   init(
     id: UUID, kind: ClipboardItemKind, displayText: String, payload: String, payloadHash: String, createdAt: Date, lastUsedAt: Date,
-    useCount: Int, sourceApp: String?, imagePath: String?, thumbnailPath: String?, isPinned: Bool = false, sourceAppBundleId: String? = nil,
-    ocrText: String? = nil, collectionName: String? = nil, customTitle: String? = nil,
+    useCount: Int, sourceApp: String? = nil, imagePath: String? = nil, thumbnailPath: String? = nil, isPinned: Bool = false,
+    sourceAppBundleId: String? = nil, ocrText: String? = nil, collectionName: String? = nil, customTitle: String? = nil,
     sourceDeviceName: String? = ClipboardItem.localDeviceName
   ) {
     self.id = id
@@ -198,22 +122,12 @@ struct ClipboardItem: Equatable {
     self.sourceDeviceName = ClipboardItem.normalizedDeviceName(sourceDeviceName)
   }
 
-  static func normalizedCustomTitle(_ value: String?) -> String? {
-    guard let value else { return nil }
-    let title = value.split { $0.isWhitespace }.joined(separator: " ").clipboardTrimmed
-    guard !title.isEmpty else { return nil }
-    return String(title.prefix(80))
-  }
+  static func normalizedCustomTitle(_ value: String?) -> String? { value?.clipboardLabel(limit: 80) }
 
   static var localDeviceName: String {
     normalizedDeviceName(Host.current().localizedName) ?? normalizedDeviceName(Host.current().name) ?? normalizedDeviceName(
       ProcessInfo.processInfo.hostName) ?? "This Mac"
   }
 
-  static func normalizedDeviceName(_ value: String?) -> String? {
-    guard let value else { return nil }
-    let name = value.split { $0.isWhitespace }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !name.isEmpty else { return nil }
-    return String(name.prefix(60))
-  }
+  static func normalizedDeviceName(_ value: String?) -> String? { value?.clipboardLabel(limit: 60) }
 }

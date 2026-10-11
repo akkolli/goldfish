@@ -1,6 +1,6 @@
 # Goldfish interface design
 
-Goldfish uses a vertical shelf, symbol navigation for destinations, and adaptive rows of colorful cards. Notification Center informs the material, density, and motion while Goldfish keeps its vivid content-type headers and recognizable source icons. [Earlier reference study and implementation record](history/GOLDFISH_DESIGN_REBUILD.md).
+Goldfish uses a vertical shelf, symbol navigation for destinations, and adaptive rows of colorful cards. Notification Center informs the material, density, and motion while Goldfish keeps its vivid content-type headers and recognizable source icons. [Earlier reference study and implementation record](history/README.md).
 
 ## Hierarchy and geometry
 

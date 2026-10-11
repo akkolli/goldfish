@@ -355,14 +355,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     statusMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.maxY), in: button)
   }
 
-  @discardableResult private func addMenuItem(_ title: String, _ action: Selector, to menu: NSMenu) -> NSMenuItem {
-    let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-    item.target = self
-    item.isEnabled = true
-    menu.addItem(item)
-    return item
-  }
-
   private static func firstPresentStatus(_ candidates: [String?]) -> String? {
     for candidate in candidates {
       guard let value = candidate?.clipboardTrimmed, !value.isEmpty else { continue }
@@ -437,62 +429,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func configureMainMenu() {
-    let appMenu = NSMenuItem()
-    let appSubMenu = NSMenu(title: "Goldfish")
-    let settingsShortcut = self.settings.settingsShortcut
-    let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: settingsShortcut.key)
-    settings.keyEquivalentModifierMask = menuModifierFlags(settingsShortcut)
-    settings.target = self
-    appSubMenu.addItem(settings)
-    appSubMenu.addItem(NSMenuItem.separator())
-    let quit = NSMenuItem(title: "Quit Goldfish", action: #selector(quitApp), keyEquivalent: "q")
-    quit.target = self
-    appSubMenu.addItem(quit)
-    appMenu.submenu = appSubMenu
+    NSApp.mainMenu = Self.makeMainMenu(openShortcut: settings.openShortcut, settingsShortcut: settings.settingsShortcut, target: self)
+  }
 
-    let fileMenu = NSMenuItem()
-    let fileSubMenu = NSMenu(title: "File")
-    let newText = NSMenuItem(title: "New Text Clip…", action: #selector(createTextClip), keyEquivalent: "n")
-    newText.target = self
-    fileSubMenu.addItem(newText)
-    let newCollection = NSMenuItem(title: "New Pinboard…", action: #selector(createCollection), keyEquivalent: "n")
-    newCollection.keyEquivalentModifierMask = [.command, .shift]
-    newCollection.target = self
-    fileSubMenu.addItem(newCollection)
-    fileSubMenu.addItem(NSMenuItem.separator())
-    let pauseCapture = NSMenuItem(title: "Pause/Resume Capture", action: #selector(togglePauseCapture), keyEquivalent: "t")
-    pauseCapture.keyEquivalentModifierMask = .command
-    pauseCapture.target = self
-    fileSubMenu.addItem(pauseCapture)
-    fileSubMenu.addItem(NSMenuItem.separator())
-    fileSubMenu.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
-    fileMenu.submenu = fileSubMenu
-
-    let editMenu = NSMenuItem()
-    let editSubMenu = NSMenu(title: "Edit")
-    // A nil target lets the focused text editor or window handle these commands.
-    editSubMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
-    let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
-    redo.keyEquivalentModifierMask = [.command, .shift]
-    editSubMenu.addItem(redo)
-    editSubMenu.addItem(NSMenuItem.separator())
-    editSubMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
-    editSubMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
-    editSubMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
-    editSubMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
-    editSubMenu.addItem(NSMenuItem.separator())
-    let openShortcut = self.settings.openShortcut
-    let showClipboard = NSMenuItem(title: "Show Clipboard", action: #selector(showClipboardPanel), keyEquivalent: openShortcut.key)
-    showClipboard.keyEquivalentModifierMask = menuModifierFlags(openShortcut)
-    showClipboard.target = self
-    editSubMenu.addItem(showClipboard)
-    editMenu.submenu = editSubMenu
-
-    let mainMenu = NSMenu()
-    mainMenu.addItem(appMenu)
-    mainMenu.addItem(fileMenu)
-    mainMenu.addItem(editMenu)
-    NSApp.mainMenu = mainMenu
+  static func makeMainMenu(openShortcut: ShortcutBinding, settingsShortcut: ShortcutBinding, target: AnyObject?) -> NSMenu {
+    func action(_ title: String, _ selector: Selector, _ key: String, modifiers: NSEvent.ModifierFlags = .command, targeted: Bool = false)
+      -> NSMenuItem
+    {
+      let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
+      item.keyEquivalentModifierMask = modifiers
+      item.target = targeted ? target : nil
+      return item
+    }
+    let sections: [(String, [NSMenuItem])] = [
+      (
+        "Goldfish",
+        [
+          action(
+            "Settings…", #selector(openSettings), settingsShortcut.key, modifiers: modifierFlags(for: settingsShortcut), targeted: true),
+          .separator(), action("Quit Goldfish", #selector(quitApp), "q", targeted: true),
+        ]
+      ),
+      (
+        "File",
+        [
+          action("New Text Clip…", #selector(createTextClip), "n", targeted: true),
+          action("New Pinboard…", #selector(createCollection), "n", modifiers: [.command, .shift], targeted: true), .separator(),
+          action("Pause/Resume Capture", #selector(togglePauseCapture), "t", targeted: true), .separator(),
+          action("Close", #selector(NSWindow.performClose(_:)), "w"),
+        ]
+      ),
+      (
+        "Edit",
+        [
+          // Nil targets route editing commands through the focused responder.
+          action("Undo", Selector(("undo:")), "z"), action("Redo", Selector(("redo:")), "z", modifiers: [.command, .shift]), .separator(),
+          action("Cut", #selector(NSText.cut(_:)), "x"), action("Copy", #selector(NSText.copy(_:)), "c"),
+          action("Paste", #selector(NSText.paste(_:)), "v"), action("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
+          action(
+            "Show Clipboard", #selector(showClipboardPanel), openShortcut.key, modifiers: modifierFlags(for: openShortcut), targeted: true),
+        ]
+      ),
+    ]
+    let menu = NSMenu()
+    for (title, items) in sections {
+      let parent = NSMenuItem()
+      let submenu = NSMenu(title: title)
+      items.forEach(submenu.addItem)
+      parent.submenu = submenu
+      menu.addItem(parent)
+    }
+    return menu
   }
 
   private func bindSettings() {
@@ -778,10 +765,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       alert.addButton(withTitle: "OK")
       alert.runModal()
     }
-  }
-
-  private func menuModifierFlags(_ binding: ShortcutBinding) -> NSEvent.ModifierFlags {
-    NSEvent.ModifierFlags(rawValue: binding.modifierFlags)
   }
 
 }

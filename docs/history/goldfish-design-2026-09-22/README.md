@@ -12,4 +12,4 @@ These native AppKit renders use synthetic content and isolated preferences. They
 - `settings-0-*` through `settings-5-*`: General, Shortcuts, Capture, Privacy, Performance and Data.
 - `welcome-*`: first-run introduction with the same vertical card language.
 
-Live checks are recorded in [the implementation review](../GOLDFISH_DESIGN_REBUILD.md). Offscreen renders do not measure frame pacing or replace physical VoiceOver, multi-display, and older macOS testing. The previous September 21 fixtures remain as a historical record.
+Live checks are recorded in [the implementation review](../README.md). Offscreen renders do not measure frame pacing or replace physical VoiceOver, multi-display, and older macOS testing. The previous September 21 fixtures remain as a historical record.

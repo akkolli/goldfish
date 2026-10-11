@@ -531,11 +531,7 @@ final class ClipboardShelfControls: NSObject {
     button.setContentHuggingPriority(.required, for: .horizontal)
   }
   private func row(_ views: [NSView]) -> NSStackView {
-    let stack = NSStackView(views: views)
-    stack.orientation = .horizontal
-    stack.alignment = .centerY
-    stack.spacing = 8
-    stack.detachesHiddenViews = true
+    let stack = NativeUI.stack(views, axis: .horizontal, alignment: .centerY, spacing: 8, detachHidden: true)
     return stack
   }
   private func vertical(_ stack: NSStackView, views: [NSView], spacing: CGFloat) {

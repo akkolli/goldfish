@@ -73,8 +73,8 @@ final class PasteActionServiceTests: ClipboardTestCase {
   func testCopyMultipleItemsPreservesOriginalPasteboardRepresentations() throws {
     let service = makeService()
     let link = testItem(
-      kind: .url, displayText: "Apple", payload: "https://apple.com", payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
+      kind: .url, displayText: "Apple", payload: "https://apple.com", payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(),
+      useCount: 0)
     let text = makeTextItem("Batch note")
 
     XCTAssertEqual(service.copy([link, text]), .copied)
@@ -85,24 +85,30 @@ final class PasteActionServiceTests: ClipboardTestCase {
     XCTAssertEqual(pasteboardItems[1].string(forType: .string), "Batch note")
   }
 
-  func testCopyMultipleItemsDoesNotClearPasteboardWhenAnyItemIsUnwritable() {
-    let service = makeService()
-    let missingPath = FileManager.default.temporaryDirectory.appendingPathComponent("clipbored-missing-\(UUID().uuidString)").path
-    let missingFile = testItem(
-      kind: .file, displayText: "Missing file", payload: missingPath, payloadHash: "hash", createdAt: Date(),
+  func testUnwritableSingleAndBatchCopiesPreserveTheClipboard() {
+    let missing = testItem(
+      kind: .file, displayText: "Missing file", payload: "/tmp/clipbored-missing-\(UUID())", payloadHash: "hash", createdAt: Date(),
       lastUsedAt: Date(), useCount: 0)
-    pasteboard.clearContents()
-    pasteboard.setString("keep me", forType: .string)
-
-    XCTAssertEqual(service.copy([makeTextItem("Writable"), missingFile]), .failed("Could not write items to clipboard."))
-    XCTAssertEqual(pasteboard.string(forType: .string), "keep me")
+    let batchMissing = testItem(
+      kind: .file, displayText: "Missing file",
+      payload: FileManager.default.temporaryDirectory.appendingPathComponent("clipbored-missing-\(UUID())").path, payloadHash: "hash",
+      createdAt: Date(), lastUsedAt: Date(), useCount: 0)
+    let cases: [(items: [ClipboardItem], batch: Bool, error: String)] = [
+      ([makeTextItem("Writable"), batchMissing], true, "Could not write items to clipboard."),
+      ([missing], false, "Could not write item to clipboard."), ([makeTextItem("")], false, "Could not write item to clipboard."),
+    ]
+    for entry in cases {
+      let service = makeService()
+      pasteboard.clearContents()
+      XCTAssertTrue(pasteboard.setString("keep me", forType: .string))
+      XCTAssertEqual(entry.batch ? service.copy(entry.items) : service.copy(entry.items[0]), .failed(entry.error))
+      XCTAssertEqual(pasteboard.string(forType: .string), "keep me")
+    }
   }
 
   func testCopyWritesColorToPasteboardWithHexFallback() throws {
     let service = makeService()
-    let item = testItem(
-      kind: .color, payload: "#0A84FF", payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(),
-      useCount: 0)
+    let item = testItem(kind: .color, payload: "#0A84FF", payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(), useCount: 0)
 
     XCTAssertEqual(service.copy(item), .copied)
     let restored = try XCTUnwrap(NSColor(from: pasteboard))
@@ -112,42 +118,29 @@ final class PasteActionServiceTests: ClipboardTestCase {
     XCTAssertEqual(pasteboard.string(forType: .string), "#0A84FF")
   }
 
-  func testAutomaticPasteActivatesTargetAndSchedulesKeyboardPasteWhenPermissionGranted() throws {
-    var activatedProcessID: pid_t?
-    let targetApp = try makeRunningTargetApp()
-    var didScheduleKeyboardPaste = false
-    let service = makeService(
-      accessibilityPermissionProvider: { true },
-      targetActivator: { app in
-        activatedProcessID = app.processIdentifier
-        return true
-      }, keyboardPasteScheduler: { _ in didScheduleKeyboardPaste = true })
-
-    XCTAssertEqual(service.paste(makeTextItem("Paste into target"), targetApp: targetApp), .pasted)
-    XCTAssertEqual(activatedProcessID, targetApp.processIdentifier)
-    XCTAssertTrue(didScheduleKeyboardPaste)
-    XCTAssertEqual(pasteboard.string(forType: .string), "Paste into target")
-  }
-
-  func testAutomaticPlainTextPasteActivatesTargetAndSchedulesKeyboardPasteWhenPermissionGranted() throws {
-    var activatedProcessID: pid_t?
-    let targetApp = try makeRunningTargetApp()
-    var didScheduleKeyboardPaste = false
-    let service = makeService(
-      accessibilityPermissionProvider: { true },
-      targetActivator: { app in
-        activatedProcessID = app.processIdentifier
-        return true
-      }, keyboardPasteScheduler: { _ in didScheduleKeyboardPaste = true })
-    let item = testItem(
-      kind: .url, displayText: "Apple", payload: "https://apple.com", payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
-
-    XCTAssertEqual(service.pastePlainText(item, targetApp: targetApp), .pastedPlainText)
-    XCTAssertEqual(activatedProcessID, targetApp.processIdentifier)
-    XCTAssertTrue(didScheduleKeyboardPaste)
-    XCTAssertEqual(pasteboard.string(forType: .string), "https://apple.com")
-    XCTAssertNil(pasteboard.string(forType: .URL))
+  func testAutomaticOriginalAndPlainTextPasteActivateTheTargetAndScheduleDelivery() throws {
+    let target = try makeRunningTargetApp()
+    for plainText in [false, true] {
+      var activated: pid_t?
+      var scheduled = false
+      let service = makeService(
+        accessibilityPermissionProvider: { true },
+        targetActivator: {
+          activated = $0.processIdentifier
+          return true
+        }, keyboardPasteScheduler: { _ in scheduled = true })
+      let item =
+        plainText
+        ? testItem(
+          kind: .url, displayText: "Apple", payload: "https://apple.com", payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(),
+          useCount: 0) : makeTextItem("Paste into target")
+      let result = plainText ? service.pastePlainText(item, targetApp: target) : service.paste(item, targetApp: target)
+      XCTAssertEqual(result, plainText ? .pastedPlainText : .pasted)
+      XCTAssertEqual(activated, target.processIdentifier)
+      XCTAssertTrue(scheduled)
+      XCTAssertEqual(pasteboard.string(forType: .string), item.payload)
+      if plainText { XCTAssertNil(pasteboard.string(forType: .URL)) }
+    }
   }
 
   func testAutomaticPasteDoesNotPostShortcutWhenTargetActivationFails() throws {
@@ -165,37 +158,11 @@ final class PasteActionServiceTests: ClipboardTestCase {
     XCTAssertEqual(pasteboard.string(forType: .string), "Activation failed")
   }
 
-  func testCopyMissingFileDoesNotClearExistingPasteboard() {
-    let service = makeService()
-    let board = pasteboard
-    board.clearContents()
-    XCTAssertTrue(board.setString("keep me", forType: .string))
-
-    let item = testItem(
-      kind: .file, displayText: "Missing file", payload: "/tmp/clipbored-missing-\(UUID().uuidString)",
-      payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(), useCount: 0)
-
-    XCTAssertEqual(service.copy(item), .failed("Could not write item to clipboard."))
-    XCTAssertEqual(board.string(forType: .string), "keep me")
-  }
-
-  func testCopyEmptyTextDoesNotClearExistingPasteboard() {
-    let service = makeService()
-    let board = pasteboard
-    board.clearContents()
-    XCTAssertTrue(board.setString("keep me", forType: .string))
-
-    let item = testItem(payload: "", payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(), useCount: 0)
-
-    XCTAssertEqual(service.copy(item), .failed("Could not write item to clipboard."))
-    XCTAssertEqual(board.string(forType: .string), "keep me")
-  }
-
   func testCopyWritesURLType() {
     let service = makeService()
     let item = testItem(
-      kind: .url, displayText: "Apple", payload: "https://apple.com", payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
+      kind: .url, displayText: "Apple", payload: "https://apple.com", payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(),
+      useCount: 0)
 
     XCTAssertEqual(service.copy(item), .copied)
     XCTAssertEqual(pasteboard.string(forType: .string), "https://apple.com")
@@ -203,36 +170,20 @@ final class PasteActionServiceTests: ClipboardTestCase {
     XCTAssertEqual(pasteboard.string(forType: NSPasteboard.PasteboardType(rawValue: "public.url-name")), "Apple")
   }
 
-  func testCopyWritesRichTextRTFAndPlainStringFallback() throws {
-    let directory = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: directory, encryptionService: testEncryption(byte: 7))
-    let attributed = NSAttributedString(string: "Styled clipboard text", attributes: [.font: NSFont.boldSystemFont(ofSize: 15)])
-    let rtfData = try XCTUnwrap(attributed.rtf(from: NSRange(location: 0, length: attributed.length), documentAttributes: [:]))
-    let path = try XCTUnwrap(cacheService.cacheRichText(rtfData, id: UUID()))
-    let service = PasteActionService(pasteboard: pasteboard, cacheService: cacheService)
-    let item = testItem(
-      kind: .richText, displayText: attributed.string, payload: path, payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
-
-    XCTAssertEqual(service.copy(item), .copied)
-    XCTAssertEqual(pasteboard.data(forType: .rtf), rtfData)
-    XCTAssertEqual(pasteboard.string(forType: .string), attributed.string)
-  }
-
-  func testCopyPlainTextStripsRichTextFormatting() throws {
-    let directory = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: directory, encryptionService: testEncryption(byte: 7))
-    let attributed = NSAttributedString(string: "Styled clipboard text", attributes: [.font: NSFont.boldSystemFont(ofSize: 15)])
-    let rtfData = try XCTUnwrap(attributed.rtf(from: NSRange(location: 0, length: attributed.length), documentAttributes: [:]))
-    let path = try XCTUnwrap(cacheService.cacheRichText(rtfData, id: UUID()))
-    let service = PasteActionService(pasteboard: pasteboard, cacheService: cacheService)
-    let item = testItem(
-      kind: .richText, displayText: attributed.string, payload: path, payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
-
-    XCTAssertEqual(service.copyPlainText(item), .copiedPlainText)
-    XCTAssertEqual(pasteboard.string(forType: .string), attributed.string)
-    XCTAssertNil(pasteboard.data(forType: .rtf))
+  func testRichTextCopyPreservesFormattingAndPlainTextCopyStripsIt() throws {
+    for plainText in [false, true] {
+      let cache = ClipboardCacheService(baseURL: try makeTempDirectory(), encryptionService: testEncryption(byte: 7))
+      let attributed = NSAttributedString(string: "Styled clipboard text", attributes: [.font: NSFont.boldSystemFont(ofSize: 15)])
+      let rtf = try XCTUnwrap(attributed.rtf(from: NSRange(location: 0, length: attributed.length), documentAttributes: [:]))
+      let path = try XCTUnwrap(cache.cacheRichText(rtf, id: UUID()))
+      let service = PasteActionService(pasteboard: pasteboard, cacheService: cache)
+      let item = testItem(
+        kind: .richText, displayText: attributed.string, payload: path, payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(),
+        useCount: 0)
+      XCTAssertEqual(plainText ? service.copyPlainText(item) : service.copy(item), plainText ? .copiedPlainText : .copied)
+      XCTAssertEqual(pasteboard.string(forType: .string), attributed.string)
+      if plainText { XCTAssertNil(pasteboard.data(forType: .rtf)) } else { XCTAssertEqual(pasteboard.data(forType: .rtf), rtf) }
+    }
   }
 
   func testCopyWritesMultipleFileReferences() throws {
@@ -241,8 +192,7 @@ final class PasteActionServiceTests: ClipboardTestCase {
     let payload = FilePayload.payload(from: [firstURL, secondURL])
     let service = makeService()
     let item = testItem(
-      kind: .file, displayText: "2 files", payload: payload, payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
+      kind: .file, displayText: "2 files", payload: payload, payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(), useCount: 0)
 
     XCTAssertEqual(service.copy(item), .copied)
     let objects = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
@@ -250,61 +200,36 @@ final class PasteActionServiceTests: ClipboardTestCase {
     XCTAssertEqual(pasteboard.string(forType: .string), payload)
   }
 
-  func testCopyWritesPDFData() throws {
-    let pdfData = Data("%PDF-1.4\nclipbored\n%%EOF".utf8)
-    let fileURL = try makeTempFile(contents: pdfData)
-    let service = makeService()
-    let item = testItem(
-      kind: .pdf, displayText: "PDF", payload: fileURL.path, payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
-
-    XCTAssertEqual(service.copy(item), .copied)
-    XCTAssertEqual(pasteboard.data(forType: .pdf), pdfData)
-  }
-
-  func testCopyWritesAudioData() throws {
-    let directory = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: directory, encryptionService: testEncryption(byte: 7))
-    let audioData = Data([1, 3, 5, 7, 9])
-    let path = try XCTUnwrap(cacheService.cacheAudio(audioData, id: UUID()))
-    let service = PasteActionService(pasteboard: pasteboard, cacheService: cacheService)
-    let item = testItem(
-      kind: .audio, displayText: "Audio", payload: path, payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
-
-    XCTAssertEqual(service.copy(item), .copied)
-    XCTAssertEqual(pasteboard.data(forType: .sound), audioData)
-  }
-
-  func testCopyWritesVideoData() throws {
-    let directory = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: directory, encryptionService: testEncryption(byte: 7))
-    let videoData = Data([0, 0, 0, 24, 102, 116, 121, 112, 109, 112, 52, 50])
-    let path = try XCTUnwrap(cacheService.cacheVideo(videoData, id: UUID(), fileExtension: "mp4"))
-    let service = PasteActionService(pasteboard: pasteboard, cacheService: cacheService)
-    let item = testItem(
-      kind: .video, displayText: "Video", payload: path, payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
-
-    XCTAssertEqual(service.copy(item), .copied)
-    XCTAssertEqual(pasteboard.data(forType: VideoPayload.pasteboardTypes[0]), videoData)
-    XCTAssertEqual(service.copyPlainText(item), .copiedPlainText)
-    XCTAssertEqual(pasteboard.string(forType: .string), "Video")
-  }
-
-  func testCopyWritesEncryptedPDFData() throws {
-    let directory = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: directory, encryptionService: testEncryption(byte: 7))
-    let pdfData = Data("%PDF-1.4\nencrypted clipbored\n%%EOF".utf8)
-    let path = try XCTUnwrap(cacheService.cachePDF(pdfData, id: UUID()))
-    let service = PasteActionService(pasteboard: pasteboard, cacheService: cacheService)
-    let item = testItem(
-      kind: .pdf, displayText: "PDF", payload: path, payloadHash: "hash", createdAt: Date(),
-      lastUsedAt: Date(), useCount: 0)
-
-    XCTAssertTrue(ClipboardEncryptionService.isProtected(try Data(contentsOf: URL(fileURLWithPath: path))))
-    XCTAssertEqual(service.copy(item), .copied)
-    XCTAssertEqual(pasteboard.data(forType: .pdf), pdfData)
+  func testCopyRestoresExternalPDFAndEncryptedMediaRepresentations() throws {
+    let cases: [(kind: ClipboardItemKind, title: String, data: Data, type: NSPasteboard.PasteboardType, encrypted: Bool)] = [
+      (.pdf, "PDF", Data("%PDF-1.4\nclipbored\n%%EOF".utf8), .pdf, false), (.audio, "Audio", Data([1, 3, 5, 7, 9]), .sound, true),
+      (.video, "Video", Data([0, 0, 0, 24, 102, 116, 121, 112, 109, 112, 52, 50]), VideoPayload.pasteboardTypes[0], true),
+      (.pdf, "PDF", Data("%PDF-1.4\nencrypted clipbored\n%%EOF".utf8), .pdf, true),
+    ]
+    for entry in cases {
+      let cache = ClipboardCacheService(baseURL: try makeTempDirectory(), encryptionService: testEncryption(byte: 7))
+      let path: String
+      if !entry.encrypted {
+        path = try makeTempFile(contents: entry.data).path
+      } else {
+        switch entry.kind {
+        case .pdf: path = try XCTUnwrap(cache.cachePDF(entry.data, id: UUID()))
+        case .audio: path = try XCTUnwrap(cache.cacheAudio(entry.data, id: UUID()))
+        case .video: path = try XCTUnwrap(cache.cacheVideo(entry.data, id: UUID(), fileExtension: "mp4"))
+        default: return XCTFail("Missing media fixture")
+        }
+      }
+      let service = PasteActionService(pasteboard: pasteboard, cacheService: cache)
+      let item = testItem(
+        kind: entry.kind, displayText: entry.title, payload: path, payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(), useCount: 0)
+      if entry.encrypted { XCTAssertTrue(ClipboardEncryptionService.isProtected(try Data(contentsOf: URL(fileURLWithPath: path)))) }
+      XCTAssertEqual(service.copy(item), .copied)
+      XCTAssertEqual(pasteboard.data(forType: entry.type), entry.data)
+      if entry.kind == .video {
+        XCTAssertEqual(service.copyPlainText(item), .copiedPlainText)
+        XCTAssertEqual(pasteboard.string(forType: .string), "Video")
+      }
+    }
   }
 
   private func makeService(

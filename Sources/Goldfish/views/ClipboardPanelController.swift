@@ -5,46 +5,6 @@ struct ClipboardPanelReflowPlan {
   let bottomSafeInset: CGFloat
 }
 
-enum ClipboardPanelShortcutAction: Equatable {
-  case close
-  case copy
-  case copyPlainText
-  case edit
-  case focusSearch
-  case newCollection
-  case newText
-  case nextCollection
-  case open
-  case pastePlainText
-  case preview
-  case previousCollection
-  case rename
-  case reveal
-  case showInClipboard
-  case toggleCapturePause
-  case togglePin
-  case undoDelete
-}
-
-enum ClipboardPanelNavigationAction: Equatable {
-  case first
-  case last
-  case next
-  case pageNext
-  case pagePrevious
-  case previous
-}
-
-enum ClipboardPanelSelectionAction: Equatable {
-  case extendFirst
-  case extendLast
-  case extendNext
-  case extendPageNext
-  case extendPagePrevious
-  case extendPrevious
-  case selectAll
-}
-
 final class ClipboardPanelController: NSObject, NSWindowDelegate {
   // The shelf is a transient menu-bar overlay. The Dock sits above floating
   // windows, so use the lowest standard level above it while the shelf is open.
@@ -82,10 +42,9 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
   private var isAnimating = false
   private var visibilityAnimationGeneration = 0
   private var lastAutomaticDismissalUptime: TimeInterval?
-  private var filePreviewController: ClipboardPreviewWindowController?
+  private var previewController: ClipboardAuxiliaryWindowController?
   private var isPresentingPreview = false
   private var isDismissingPreviews = false
-  private var linkPreviewController: LinkPreviewWindowController?
   private var screenParametersObserver: NSObjectProtocol?
   private static let quickPasteKeyCodes: [UInt16: Int] = [18: 0, 19: 1, 20: 2, 21: 3, 23: 4, 22: 5, 26: 6, 28: 7, 25: 8]
   private static let collectionShortcuts: [UInt16: ClipboardSortMode] = [
@@ -196,7 +155,6 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     lastAutomaticDismissalUptime = nil
     let wasAnimating = isAnimating
     visibilityAnimationGeneration += 1
-    let generation = visibilityAnimationGeneration
     isAnimating = true
     isVisible = true
 
@@ -224,19 +182,13 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     panelView.beginOpeningTransition(fromLeft: settings.panelSide == .left)
     startHoverRefresh()
 
-    NSAnimationContext.runAnimationGroup { context in
-      context.duration = Animation.duration(Animation.showDuration)
-      context.allowsImplicitAnimation = true
-      context.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 0.85, 0.25, 1)
-      panel.animator().setFrame(frames.shown, display: true)
-      panel.animator().alphaValue = 1.0
-    } completionHandler: { [weak self] in
-      guard let self, self.visibilityAnimationGeneration == generation else { return }
-      self.isAnimating = false
-      self.panelView.finishOpeningTransition()
-      guard self.isVisible else { return }
-      self.installClickMonitor()
-      if !self.panelView.resumeTextEditorIfNeeded() { self.panelView.focusSelectedCardForKeyboardNavigation() }
+    animatePanel(
+      to: frames.shown, opacity: 1, duration: Animation.showDuration, timing: CAMediaTimingFunction(controlPoints: 0.18, 0.85, 0.25, 1)
+    ) { controller in
+      controller.panelView.finishOpeningTransition()
+      guard controller.isVisible else { return }
+      controller.installClickMonitor()
+      if !controller.panelView.resumeTextEditorIfNeeded() { controller.panelView.focusSelectedCardForKeyboardNavigation() }
     }
 
     installKeyMonitor()
@@ -265,7 +217,6 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     }
     guard isVisible || (immediate && isAnimating) else { return }
     visibilityAnimationGeneration += 1
-    let generation = visibilityAnimationGeneration
     isVisible = false
     stopHoverRefresh()
     panelView.suspendTextEditor()
@@ -293,19 +244,32 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     isAnimating = true
     panelView.beginClosingTransition()
 
+    animatePanel(to: hidden, opacity: 0, duration: Animation.hideDuration) { controller in
+      controller.panel.orderOut(nil)
+      controller.panel.alphaValue = 1
+      controller.activeScreenSnapshot = nil
+      controller.panelView.finishOpeningTransition()
+    }
+  }
+
+  /// One generation guard covers visibility changes and reflows, so an older
+  /// animation cannot finish a newer transition or install stale event monitors.
+  private func animatePanel(
+    to frame: NSRect, opacity: CGFloat? = nil, duration: TimeInterval,
+    timing: CAMediaTimingFunction = CAMediaTimingFunction(name: Animation.easing), completion: @escaping (ClipboardPanelController) -> Void
+  ) {
+    let generation = visibilityAnimationGeneration
+    isAnimating = true
     NSAnimationContext.runAnimationGroup { context in
-      context.duration = Animation.duration(Animation.hideDuration)
+      context.duration = Animation.duration(duration)
       context.allowsImplicitAnimation = true
-      context.timingFunction = CAMediaTimingFunction(name: Animation.easing)
-      panel.animator().alphaValue = 0.0
-      panel.animator().setFrame(hidden, display: true)
+      context.timingFunction = timing
+      panel.animator().setFrame(frame, display: true)
+      if let opacity { panel.animator().alphaValue = opacity }
     } completionHandler: { [weak self] in
       guard let self, self.visibilityAnimationGeneration == generation else { return }
-      self.panel.orderOut(nil)
-      self.panel.alphaValue = 1.0
       self.isAnimating = false
-      self.activeScreenSnapshot = nil
-      self.panelView.finishOpeningTransition()
+      completion(self)
     }
   }
 
@@ -360,8 +324,7 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
         self.panel.attachedSheet == nil
       else { return }
       let ownedWindows = [
-        self.panel, self.filePreviewController?.window, self.linkPreviewController?.window, self.panelView.presentedMenuWindow,
-        self.panelView.presentedTextEditorWindow,
+        self.panel, self.previewController?.window, self.panelView.presentedMenuWindow, self.panelView.presentedTextEditorWindow,
       ]
       guard !ownedWindows.contains(where: { $0?.isKeyWindow == true }) else { return }
       self.dismissForOutsideInteraction()
@@ -521,133 +484,57 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     removeKeyMonitor()
     keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
       guard let self else { return event }
-      if self.shouldHandlePanelKeyEvent(event, allowSearchFieldEditing: true), self.panelView.isSearchFieldEditing,
-        Self.searchFieldPreviewShortcut(
-          forKeyCode: event.keyCode, modifiers: event.modifierFlags, searchText: self.panelView.searchTextForKeyboardShortcut)
-      {
-        self.previewSelected()
-        return nil
+      return self.handleKeyEvent(event)
+    }
+  }
+
+  private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
+    guard shouldHandlePanelKeyEvent(event) else { return event }
+    if panelView.isSearchFieldEditing,
+      Self.searchFieldPreviewShortcut(
+        forKeyCode: event.keyCode, modifiers: event.modifierFlags, searchText: panelView.searchTextForKeyboardShortcut)
+    {
+      previewSelected()
+    } else if let index = Self.quickPasteIndex(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
+      viewModel.pasteItem(at: index)
+    } else if let index = Self.quickPastePlainTextIndex(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
+      viewModel.pasteItemPlainText(at: index)
+    } else if let mode = Self.collectionShortcutMode(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
+      viewModel.sortMode = mode
+    } else if Self.matchesShortcut(keyCode: event.keyCode, modifiers: event.modifierFlags, binding: settings.settingsShortcut) {
+      requestSettings()
+    } else if let action = Self.commandShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
+      if panelView.isSearchFieldEditing, [.copy, .undoDelete, .adjacentCollection(-1), .adjacentCollection(1)].contains(action) {
+        return event
       }
-      if self.shouldHandlePanelKeyEvent(event, allowSearchFieldEditing: true),
-        let index = Self.quickPasteIndex(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
+      performShortcutAction(action)
+    } else if let action = Self.modifiedShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
+      performShortcutAction(action)
+    } else {
+      guard !panelView.isSearchFieldEditing else { return event }
+      if let action = Self.selectionShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
+        ?? Self.navigationShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
       {
-        self.viewModel.pasteItem(at: index)
-        return nil
-      }
-      if self.shouldHandlePanelKeyEvent(event, allowSearchFieldEditing: true),
-        let index = Self.quickPastePlainTextIndex(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
-      {
-        self.viewModel.pasteItemPlainText(at: index)
-        return nil
-      }
-      if self.shouldHandlePanelKeyEvent(event, allowSearchFieldEditing: true),
-        let mode = Self.collectionShortcutMode(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
-      {
-        self.viewModel.sortMode = mode
-        return nil
-      }
-      if self.shouldHandlePanelKeyEvent(event, allowSearchFieldEditing: true),
-        Self.matchesShortcut(keyCode: event.keyCode, modifiers: event.modifierFlags, binding: self.settings.settingsShortcut)
-      {
-        self.requestSettings()
-        return nil
-      }
-      if self.shouldHandlePanelKeyEvent(event, allowSearchFieldEditing: true),
-        let action = Self.commandShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
-      {
-        if self.panelView.isSearchFieldEditing, [.copy, .undoDelete, .previousCollection, .nextCollection].contains(action) {
-          return event
+        panelView.navigate(action, fromPanel: true)
+      } else {
+        switch event.keyCode {
+        case 53: if !panelView.clearSearchForKeyboardCancel() { hide() }
+        case 49: previewSelected()
+        case 36: viewModel.pasteSelected()
+        case 51, 117: viewModel.deleteSelected()
+        default: return event
         }
-        self.performShortcutAction(action)
-        return nil
-      }
-      if self.shouldHandlePanelKeyEvent(event, allowSearchFieldEditing: true),
-        let action = Self.modifiedShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
-      {
-        self.performShortcutAction(action)
-        return nil
-      }
-      if self.shouldHandlePanelKeyEvent(event),
-        let action = Self.selectionShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
-      {
-        self.performSelectionAction(action)
-        return nil
-      }
-      guard self.shouldHandlePanelKeyEvent(event) else { return event }
-      if let action = Self.navigationShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
-        self.performNavigationAction(action)
-        return nil
-      }
-      switch event.keyCode {
-      case 53:
-        if !self.panelView.clearSearchForKeyboardCancel() { self.hide() }
-        return nil
-      case 49:
-        self.previewSelected()
-        return nil
-      case 36:
-        self.viewModel.pasteSelected()
-        return nil
-      case 51, 117:
-        self.viewModel.deleteSelected()
-        return nil
-      default: return event
       }
     }
+    return nil
   }
 
-  private func performNavigationAction(_ action: ClipboardPanelNavigationAction) {
-    switch action {
-    case .first: viewModel.selectFirstItem()
-    case .last: viewModel.selectLastItem()
-    case .next: viewModel.moveSelection(1)
-    case .pageNext: viewModel.moveSelection(panelView.visibleCardPageStep)
-    case .pagePrevious: viewModel.moveSelection(-panelView.visibleCardPageStep)
-    case .previous: viewModel.moveSelection(-1)
-    }
-    panelView.focusSelectedCardForKeyboardNavigation()
-  }
-
-  private func performSelectionAction(_ action: ClipboardPanelSelectionAction) {
-    switch action {
-    case .extendFirst: viewModel.selectItem(at: 0, mode: .range)
-    case .extendLast: viewModel.selectItem(at: viewModel.visibleItems.count - 1, mode: .range)
-    case .extendNext: extendSelection(by: 1)
-    case .extendPageNext: extendSelection(by: panelView.visibleCardPageStep)
-    case .extendPagePrevious: extendSelection(by: -panelView.visibleCardPageStep)
-    case .extendPrevious: extendSelection(by: -1)
-    case .selectAll: viewModel.selectAllVisibleItems()
-    }
-    panelView.focusSelectedCardForKeyboardNavigation()
-  }
-
-  private func extendSelection(by delta: Int) {
-    let count = viewModel.visibleItems.count
-    guard count > 0 else { return }
-    let target = max(0, min(count - 1, viewModel.selectedIndex + delta))
-    viewModel.selectItem(at: target, mode: .range)
-  }
-
-  private func performShortcutAction(_ action: ClipboardPanelShortcutAction) {
+  private func performShortcutAction(_ action: ClipboardCardCommand) {
     switch action {
     case .close: hide()
-    case .copy: viewModel.copySelected()
-    case .copyPlainText: viewModel.copySelectedPlainText()
-    case .edit: panelView.editSelectedClip()
-    case .focusSearch: panelView.focusSearch()
-    case .newCollection: panelView.createCollection()
-    case .newText: panelView.createTextClip()
-    case .nextCollection: viewModel.selectAdjacentCollection(delta: 1)
-    case .open: viewModel.openSelected()
-    case .pastePlainText: viewModel.pasteSelectedPlainText()
     case .preview: previewSelected()
-    case .previousCollection: viewModel.selectAdjacentCollection(delta: -1)
-    case .rename: panelView.renameSelectedClip()
-    case .reveal: viewModel.revealSelected()
-    case .showInClipboard: panelView.showSelectedInClipboard()
     case .toggleCapturePause: toggleCapturePauseFromShortcut()
-    case .togglePin: viewModel.togglePinSelected()
-    case .undoDelete: viewModel.undoLastDelete()
+    default: panelView.performCommand(action)
     }
   }
 
@@ -669,7 +556,7 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     dismissPreviews()
     if let request = viewModel.linkPreviewRequestForSelected() {
       let controller = LinkPreviewWindowController()
-      linkPreviewController = controller
+      previewController = controller
       configurePreviewLifecycle(controller)
       controller.show(request, relativeTo: panel)
       return
@@ -679,7 +566,7 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
       return
     }
     let controller = ClipboardPreviewWindowController(url: url, title: ClipboardItemCardContentFormatter().titleText(for: item))
-    filePreviewController = controller
+    previewController = controller
     configurePreviewLifecycle(controller)
     controller.present(relativeTo: panel)
   }
@@ -695,24 +582,18 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
 
   private func dismissPreviews() {
     isDismissingPreviews = true
-    filePreviewController?.close()
-    linkPreviewController?.close()
-    filePreviewController = nil
-    linkPreviewController = nil
+    previewController?.close()
+    previewController = nil
     isDismissingPreviews = false
   }
 
-  private func shouldHandlePanelKeyEvent(_ event: NSEvent) -> Bool { shouldHandlePanelKeyEvent(event, allowSearchFieldEditing: false) }
-
-  private func shouldHandlePanelKeyEvent(_ event: NSEvent, allowSearchFieldEditing: Bool) -> Bool {
+  private func shouldHandlePanelKeyEvent(_ event: NSEvent) -> Bool {
     guard panel.attachedSheet == nil, !panelView.hasActiveTextEditor else { return false }
     if panel.firstResponder is ShelfFilterButton, event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
       [36, 49, 125, 126].contains(event.keyCode)
     {
       return false
     }
-    if !allowSearchFieldEditing, self.panelView.isSearchFieldEditing { return false }
-
     guard let keyWindow = NSApp.keyWindow, keyWindow == panel else { return false }
 
     // If a key event belongs to this panel while it has lost key status temporarily
@@ -726,40 +607,18 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     return quickPasteKeyCodes[keyCode]
   }
 
-  static func navigationShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipboardPanelNavigationAction? {
-    let relevantModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
-    if relevantModifiers == .command {
-      switch keyCode {
-      case 126: return .first
-      case 125: return .last
-      default: return nil
-      }
+  static func navigationShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipboardCardNavigation? {
+    let flags = modifiers.intersection(.deviceIndependentFlagsMask)
+    if flags == .command {
+      return keyCode == 126 ? .endpoint(last: false, extend: false) : (keyCode == 125 ? .endpoint(last: true, extend: false) : nil)
     }
-    guard relevantModifiers.isEmpty else { return nil }
-    switch keyCode {
-    case 115: return .first
-    case 119: return .last
-    case 124: return .next
-    case 121: return .pageNext
-    case 116: return .pagePrevious
-    case 123: return .previous
-    default: return nil
-    }
+    return flags.isEmpty ? ClipboardCardNavigation.key(keyCode, extend: false) : nil
   }
 
-  static func selectionShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipboardPanelSelectionAction? {
-    let relevantModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
-    if relevantModifiers == .command { return keyCode == 0 ? .selectAll : nil }
-    guard relevantModifiers == .shift else { return nil }
-    switch keyCode {
-    case 115: return .extendFirst
-    case 119: return .extendLast
-    case 124: return .extendNext
-    case 121: return .extendPageNext
-    case 116: return .extendPagePrevious
-    case 123: return .extendPrevious
-    default: return nil
-    }
+  static func selectionShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipboardCardNavigation? {
+    let flags = modifiers.intersection(.deviceIndependentFlagsMask)
+    if flags == .command { return keyCode == 0 ? .all : nil }
+    return flags == .shift ? ClipboardCardNavigation.key(keyCode, extend: true) : nil
   }
 
   static func quickPastePlainTextIndex(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Int? {
@@ -786,37 +645,21 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
     return relevantModifiers == bindingModifiers
   }
 
-  static func commandShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipboardPanelShortcutAction? {
-    let relevantModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
-    guard relevantModifiers == .command else { return nil }
-    switch keyCode {
-    case 13: return .close
-    case 8: return .copy
-    case 3: return .focusSearch
-    case 14: return .edit
-    case 45: return .newText
-    case 35: return .togglePin
-    case 31: return .open
-    case 5: return .showInClipboard
-    case 16: return .preview
-    case 15: return .rename
-    case 17: return .toggleCapturePause
-    case 6: return .undoDelete
-    case 123: return .previousCollection
-    case 124: return .nextCollection
-    default: return nil
-    }
+  static func commandShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipboardCardCommand? {
+    guard modifiers.intersection(.deviceIndependentFlagsMask) == .command else { return nil }
+    return commandShortcuts[keyCode]
   }
 
-  static func modifiedShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipboardPanelShortcutAction? {
-    let relevantModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
-    if relevantModifiers == .shift { return keyCode == 36 ? .pastePlainText : nil }
-    guard relevantModifiers == [.command, .shift] else { return nil }
-    switch keyCode {
-    case 45: return .newCollection
-    case 9: return .pastePlainText
-    default: return nil
-    }
+  private static let commandShortcuts: [UInt16: ClipboardCardCommand] = [
+    13: .close, 8: .copy, 3: .focusSearch, 14: .editText, 45: .newText, 35: .togglePin, 31: .open, 5: .showInClipboard, 16: .preview,
+    15: .rename, 17: .toggleCapturePause, 6: .undoDelete, 123: .adjacentCollection(-1), 124: .adjacentCollection(1),
+  ]
+
+  static func modifiedShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipboardCardCommand? {
+    let flags = modifiers.intersection(.deviceIndependentFlagsMask)
+    if flags == .shift { return keyCode == 36 ? .pastePlainText : nil }
+    guard flags == [.command, .shift] else { return nil }
+    return keyCode == 45 ? .createCollection : (keyCode == 9 ? .pastePlainText : nil)
   }
 
   private func installClickMonitor() {
@@ -837,8 +680,7 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
 
       let point = NSEvent.mouseLocation
       let ownedWindows = [
-        self.panel, self.filePreviewController?.window, self.linkPreviewController?.window, self.panelView.presentedMenuWindow,
-        self.panelView.presentedTextEditorWindow,
+        self.panel, self.previewController?.window, self.panelView.presentedMenuWindow, self.panelView.presentedTextEditorWindow,
       ]
       if !ownedWindows.contains(where: { $0?.isVisible == true && $0?.frame.contains(point) == true }) {
         self.dismissForOutsideInteraction()
@@ -863,16 +705,7 @@ final class ClipboardPanelController: NSObject, NSWindowDelegate {
       preferredWidth: CGFloat(settings.shelfWidth.rawValue), layout: settings.shelfLayout, largerText: settings.largerShelfText)
     panelView.setBottomSafeInset(plan.bottomSafeInset)
 
-    isAnimating = true
-    NSAnimationContext.runAnimationGroup { context in
-      context.duration = Animation.duration(Animation.reflowDuration)
-      context.allowsImplicitAnimation = true
-      context.timingFunction = CAMediaTimingFunction(name: Animation.easing)
-      panel.animator().setFrame(plan.frame, display: true)
-    } completionHandler: { [weak self] in
-      self?.isAnimating = false
-      self?.installClickMonitor()
-    }
+    animatePanel(to: plan.frame, duration: Animation.reflowDuration) { $0.installClickMonitor() }
   }
 
   private func removeKeyMonitor() {

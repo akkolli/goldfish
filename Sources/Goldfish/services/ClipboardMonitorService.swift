@@ -186,104 +186,70 @@ final class ClipboardMonitorService {
     }
     let source = frontmostApp()
 
-    func isIgnored(_ kind: ClipboardItemKind) -> Bool { return configuration.ignoredItemKinds.contains(kind.rawValue) }
-
-    func ignoredKindMessage(_ kind: ClipboardItemKind) -> String {
-      return "\(displayNameForStatus(kind)) items are ignored in capture settings."
-    }
-
     if isSourceIgnored(source) {
       reportReadFailureStatus("Ignored clipboard change from \(sourceDescription(source)).")
       return nil
     }
-
-    if isIgnored(.file), hasFileItems(on: pasteboard) {
-      reportReadFailureStatus(ignoredKindMessage(.file))
-      return nil
+    // Resolve URL metadata only after file capture has had its first chance.
+    var didReadURL = false
+    var cachedURL: PasteboardURLPayload?
+    func urlPayload() -> PasteboardURLPayload? {
+      if !didReadURL {
+        cachedURL = urlPayloadFromPasteboard(pasteboard)
+        didReadURL = true
+      }
+      return cachedURL
     }
-
-    if let filePayload = itemFromFiles(pasteboard, sourceApp: source.name, sourceBundleId: source.bundleId) { return filePayload }
-
-    let url = urlPayloadFromPasteboard(pasteboard)
-
-    if isIgnored(.url), url != nil {
-      reportReadFailureStatus(ignoredKindMessage(.url))
-      return nil
+    var cachedPreviewPresence: Bool?
+    func hasURLPreview() -> Bool {
+      if let cachedPreviewPresence { return cachedPreviewPresence }
+      let present = urlPayload() != nil && hasImage(on: pasteboard)
+      cachedPreviewPresence = present
+      return present
     }
-
-    if let url, hasImage(on: pasteboard) {
-      return itemFromURL(url.url, title: url.title, sourceApp: source.name, sourceBundleId: source.bundleId, previewPasteboard: pasteboard)
+    // Readers are lazy and ordered. A disabled representation ends capture;
+    // it cannot fall through to the same content's plain-text fallback.
+    let readers: [CaptureReader] = [
+      .init(.file, present: { self.hasFileItems(on: pasteboard) }, read: { self.itemFromFiles(pasteboard, source: source) }),
+      .init(
+        .url, present: { urlPayload() != nil }, terminal: { hasURLPreview() },
+        read: {
+          guard hasURLPreview(), let url = urlPayload() else { return nil }
+          return self.itemFromURL(url.url, title: url.title, source: source, previewPasteboard: pasteboard)
+        }), .init(.color, present: { self.hasColor(on: pasteboard) }, read: { self.itemFromColor(pasteboard, source: source) }),
+      .init(.image, present: { self.hasImage(on: pasteboard) }, read: { self.itemFromImage(pasteboard, source: source) }),
+      .init(.pdf, present: { self.hasPDF(on: pasteboard) }, read: { self.itemFromPDF(pasteboard, source: source) }),
+      .init(.video, present: { self.hasVideo(on: pasteboard) }, read: { self.itemFromVideo(pasteboard, source: source) }),
+      .init(.audio, present: { self.hasAudio(on: pasteboard) }, read: { self.itemFromAudio(pasteboard, source: source) }),
+      .init(.richText, present: { self.hasRichText(on: pasteboard) }, read: { self.itemFromRichText(pasteboard, source: source) }),
+      .init(
+        .url, present: { urlPayload() != nil }, terminal: { urlPayload() != nil },
+        read: { urlPayload().flatMap { self.itemFromURL($0.url, title: $0.title, source: source) } }),
+      .init(.richText, present: { self.hasHTMLRichText(on: pasteboard) }, read: { self.itemFromHTMLRichText(pasteboard, source: source) }),
+    ]
+    for reader in readers {
+      if configuration.ignoredItemKinds.contains(reader.kind.rawValue), reader.present() {
+        reportIgnoredKind(reader.kind)
+        return nil
+      }
+      let terminal = reader.terminal()
+      let item = reader.read()
+      if item != nil || terminal { return item }
     }
-
-    if isIgnored(.color), hasColor(on: pasteboard) {
-      reportReadFailureStatus(ignoredKindMessage(.color))
-      return nil
-    }
-
-    if let colorItem = itemFromColor(pasteboard, sourceApp: source.name, sourceBundleId: source.bundleId) { return colorItem }
-
-    if isIgnored(.image), hasImage(on: pasteboard) {
-      reportReadFailureStatus(ignoredKindMessage(.image))
-      return nil
-    }
-
-    if let imageItem = itemFromImage(pasteboard, sourceApp: source.name, sourceBundleId: source.bundleId) { return imageItem }
-
-    if isIgnored(.pdf), hasPDF(on: pasteboard) {
-      reportReadFailureStatus(ignoredKindMessage(.pdf))
-      return nil
-    }
-
-    if let pdfItem = itemFromPDF(pasteboard, sourceApp: source.name, sourceBundleId: source.bundleId) { return pdfItem }
-
-    if isIgnored(.video), hasVideo(on: pasteboard) {
-      reportReadFailureStatus(ignoredKindMessage(.video))
-      return nil
-    }
-
-    if let videoItem = itemFromVideo(pasteboard, sourceApp: source.name, sourceBundleId: source.bundleId) { return videoItem }
-
-    if isIgnored(.audio), hasAudio(on: pasteboard) {
-      reportReadFailureStatus(ignoredKindMessage(.audio))
-      return nil
-    }
-
-    if let audioItem = itemFromAudio(pasteboard, sourceApp: source.name, sourceBundleId: source.bundleId) { return audioItem }
-
-    if isIgnored(.richText), hasRichText(on: pasteboard) {
-      reportReadFailureStatus(ignoredKindMessage(.richText))
-      return nil
-    }
-
-    if let rtfPayload = itemFromRichText(pasteboard, sourceApp: source.name, sourceBundleId: source.bundleId) { return rtfPayload }
-
-    if let url {
-      let item = itemFromURL(url.url, title: url.title, sourceApp: source.name, sourceBundleId: source.bundleId)
-      return item
-    }
-
-    if isIgnored(.richText), hasHTMLRichText(on: pasteboard) {
-      reportReadFailureStatus(ignoredKindMessage(.richText))
-      return nil
-    }
-
-    if let htmlPayload = itemFromHTMLRichText(pasteboard, sourceApp: source.name, sourceBundleId: source.bundleId) { return htmlPayload }
 
     if let string = pasteboard.string(forType: .string) {
       let trimmed = string.clipboardTrimmed
       if !trimmed.isEmpty {
         let kind: ClipboardItemKind =
           ColorPayload.isHexColorLiteral(trimmed) ? .color : CodeSnippetPayload.isLikelyCode(trimmed) ? .code : .text
-        if isIgnored(kind) {
-          reportReadFailureStatus(ignoredKindMessage(kind))
+        if configuration.ignoredItemKinds.contains(kind.rawValue) {
+          reportIgnoredKind(kind)
           return nil
         }
       }
     }
 
-    if let string = pasteboard.string(forType: .string),
-      let item = itemFromString(string, sourceApp: source.name, sourceBundleId: source.bundleId)
-    {
+    if let string = pasteboard.string(forType: .string), let item = itemFromString(string, source: source) {
       if item.kind == .text || item.kind == .code, item.payload.isEmpty {
         reportReadFailureStatus("Clipboard contains no readable text.")
         return nil
@@ -295,7 +261,7 @@ final class ClipboardMonitorService {
     return nil
   }
 
-  private func itemFromString(_ value: String, sourceApp: String?, sourceBundleId: String?) -> ClipboardItem? {
+  private func itemFromString(_ value: String, source: CaptureSource) -> ClipboardItem? {
     let trimmed = value.clipboardTrimmed
     if trimmed.isEmpty {
       reportReadFailureStatus("Clipboard string is empty.")
@@ -303,7 +269,7 @@ final class ClipboardMonitorService {
     }
 
     if configuration.excludeSensitive,
-      SensitiveContentDetector.isLikelySensitive(trimmed, sourceBundleId: sourceBundleId, sourceApp: sourceApp)
+      SensitiveContentDetector.isLikelySensitive(trimmed, sourceBundleId: source.bundleId, sourceApp: source.name)
     {
       reportReadFailureStatus("Copy was ignored because it looks sensitive.")
       return nil
@@ -311,25 +277,22 @@ final class ClipboardMonitorService {
 
     if let url = detectURL(trimmed) {
       return capturedItem(
-        kind: .url, displayText: url.absoluteString, payload: url.absoluteString, hash: store.hashString(url.absoluteString),
-        sourceApp: sourceApp, sourceBundleId: sourceBundleId)
+        kind: .url, displayText: url.absoluteString, payload: url.absoluteString, hash: store.hashString(url.absoluteString), source: source
+      )
     }
 
     if ColorPayload.isHexColorLiteral(trimmed) {
       return capturedItem(
-        kind: .color, displayText: ColorPayload.displayHex(from: trimmed), payload: trimmed, hash: store.hashString(trimmed),
-        sourceApp: sourceApp, sourceBundleId: sourceBundleId)
+        kind: .color, displayText: ColorPayload.displayHex(from: trimmed), payload: trimmed, hash: store.hashString(trimmed), source: source
+      )
     }
 
     if CodeSnippetPayload.isLikelyCode(trimmed) {
       return capturedItem(
-        kind: .code, displayText: CodeSnippetPayload.title(from: trimmed), payload: value, hash: store.hashString(value),
-        sourceApp: sourceApp, sourceBundleId: sourceBundleId)
+        kind: .code, displayText: CodeSnippetPayload.title(from: trimmed), payload: value, hash: store.hashString(value), source: source)
     }
 
-    return capturedItem(
-      kind: .text, displayText: trimmed, payload: value, hash: store.hashString(value), sourceApp: sourceApp, sourceBundleId: sourceBundleId
-    )
+    return capturedItem(kind: .text, displayText: trimmed, payload: value, hash: store.hashString(value), source: source)
   }
 
   private static let excludedPasteboardTypes = [
@@ -337,11 +300,9 @@ final class ClipboardMonitorService {
     "de.petermaurer.TransientPasteboardType", "com.typeit4me.clipping", "Pasteboard generator type",
   ].map { NSPasteboard.PasteboardType($0) }
 
-  private func itemFromURL(_ url: URL, title: String?, sourceApp: String?, sourceBundleId: String?, previewPasteboard: NSPasteboard? = nil)
-    -> ClipboardItem?
-  {
+  private func itemFromURL(_ url: URL, title: String?, source: CaptureSource, previewPasteboard: NSPasteboard? = nil) -> ClipboardItem? {
     if configuration.excludeSensitive,
-      SensitiveContentDetector.isLikelySensitive(url.absoluteString, sourceBundleId: sourceBundleId, sourceApp: sourceApp)
+      SensitiveContentDetector.isLikelySensitive(url.absoluteString, sourceBundleId: source.bundleId, sourceApp: source.name)
     {
       reportReadFailureStatus("URL was ignored because it looks sensitive.")
       return nil
@@ -350,8 +311,8 @@ final class ClipboardMonitorService {
     let id = UUID()
     let previewPaths = previewPasteboard.flatMap { previewImagePaths(from: $0, id: id) }
     return capturedItem(
-      kind: .url, displayText: displayText, payload: url.absoluteString, hash: store.hashString(url.absoluteString), sourceApp: sourceApp,
-      sourceBundleId: sourceBundleId, id: id, imagePath: previewPaths?.full, thumbnailPath: previewPaths?.thumb)
+      kind: .url, displayText: displayText, payload: url.absoluteString, hash: store.hashString(url.absoluteString), source: source, id: id,
+      imagePath: previewPaths?.full, thumbnailPath: previewPaths?.thumb)
   }
 
   private func previewImagePaths(from pasteboard: NSPasteboard, id: UUID) -> (full: String, thumb: String)? {
@@ -361,7 +322,7 @@ final class ClipboardMonitorService {
     return cacheService.cacheImage(image, id: id)
   }
 
-  private func itemFromImage(_ pasteboard: NSPasteboard, sourceApp: String?, sourceBundleId: String?) -> ClipboardItem? {
+  private func itemFromImage(_ pasteboard: NSPasteboard, source: CaptureSource) -> ClipboardItem? {
     let imageData = pasteboard.data(forType: .tiff) ?? pasteboard.data(forType: .png)
     guard let data = imageData else { return nil }
     guard payloadIsWithinLimit(data, kind: "Image") else { return nil }
@@ -378,8 +339,8 @@ final class ClipboardMonitorService {
     let recognizedText = recognizedTextIfEnabled(for: image)
 
     return capturedItem(
-      kind: .image, displayText: "Image", payload: cachePaths.full, hash: store.hashData(data), sourceApp: sourceApp,
-      sourceBundleId: sourceBundleId, id: id, imagePath: cachePaths.full, thumbnailPath: cachePaths.thumb, ocrText: recognizedText)
+      kind: .image, displayText: "Image", payload: cachePaths.full, hash: store.hashData(data), source: source, id: id,
+      imagePath: cachePaths.full, thumbnailPath: cachePaths.thumb, ocrText: recognizedText)
   }
 
   private func recognizedTextIfEnabled(for image: NSImage) -> String? {
@@ -409,30 +370,26 @@ final class ClipboardMonitorService {
 
   private func hasHTMLRichText(on pasteboard: NSPasteboard) -> Bool { htmlData(from: pasteboard) != nil }
 
-  private func itemFromPDF(_ pasteboard: NSPasteboard, sourceApp: String?, sourceBundleId: String?) -> ClipboardItem? {
+  private func itemFromPDF(_ pasteboard: NSPasteboard, source: CaptureSource) -> ClipboardItem? {
     guard let data = pasteboard.data(forType: .pdf) else { return nil }
-    return capturedMedia(data, kind: .pdf, title: "PDF", sourceApp: sourceApp, sourceBundleId: sourceBundleId) {
-      self.cacheService.cachePDF($0, id: $1)
-    }
+    return capturedMedia(data, kind: .pdf, title: "PDF", source: source) { self.cacheService.cachePDF($0, id: $1) }
   }
 
-  private func itemFromAudio(_ pasteboard: NSPasteboard, sourceApp: String?, sourceBundleId: String?) -> ClipboardItem? {
+  private func itemFromAudio(_ pasteboard: NSPasteboard, source: CaptureSource) -> ClipboardItem? {
     guard let data = pasteboard.data(forType: .sound) else { return nil }
-    return capturedMedia(data, kind: .audio, title: "Audio", sourceApp: sourceApp, sourceBundleId: sourceBundleId) {
-      self.cacheService.cacheAudio($0, id: $1)
-    }
+    return capturedMedia(data, kind: .audio, title: "Audio", source: source) { self.cacheService.cacheAudio($0, id: $1) }
   }
 
-  private func itemFromVideo(_ pasteboard: NSPasteboard, sourceApp: String?, sourceBundleId: String?) -> ClipboardItem? {
+  private func itemFromVideo(_ pasteboard: NSPasteboard, source: CaptureSource) -> ClipboardItem? {
     guard let video = VideoPayload.data(from: pasteboard) else { return nil }
-    return capturedMedia(video.data, kind: .video, title: "Video", sourceApp: sourceApp, sourceBundleId: sourceBundleId) {
+    return capturedMedia(video.data, kind: .video, title: "Video", source: source) {
       self.cacheService.cacheVideo($0, id: $1, fileExtension: VideoPayload.fileExtension(for: video.type))
     }
   }
 
-  private func capturedMedia(
-    _ data: Data, kind: ClipboardItemKind, title: String, sourceApp: String?, sourceBundleId: String?, cache: (Data, UUID) -> String?
-  ) -> ClipboardItem? {
+  private func capturedMedia(_ data: Data, kind: ClipboardItemKind, title: String, source: CaptureSource, cache: (Data, UUID) -> String?)
+    -> ClipboardItem?
+  {
     guard payloadIsWithinLimit(data, kind: title) else { return nil }
     let id = UUID()
     guard let path = cache(data, id) else {
@@ -443,34 +400,30 @@ final class ClipboardMonitorService {
       kind == .video
       ? VideoPayload.displayTitle(byteCount: data.count)
       : "\(title) (\(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)))"
-    return capturedItem(
-      kind: kind, displayText: display, payload: path, hash: store.hashData(data), sourceApp: sourceApp, sourceBundleId: sourceBundleId,
-      id: id)
+    return capturedItem(kind: kind, displayText: display, payload: path, hash: store.hashData(data), source: source, id: id)
   }
 
-  private func itemFromColor(_ pasteboard: NSPasteboard, sourceApp: String?, sourceBundleId: String?) -> ClipboardItem? {
+  private func itemFromColor(_ pasteboard: NSPasteboard, source: CaptureSource) -> ClipboardItem? {
     guard let color = NSColor(from: pasteboard) else { return nil }
     guard let hex = ColorPayload.hexString(from: color) else {
       reportReadFailureStatus("Clipboard color is present but could not be decoded.")
       return nil
     }
 
-    return capturedItem(
-      kind: .color, displayText: hex, payload: hex, hash: store.hashString(hex), sourceApp: sourceApp, sourceBundleId: sourceBundleId)
+    return capturedItem(kind: .color, displayText: hex, payload: hex, hash: store.hashString(hex), source: source)
   }
 
-  private func itemFromRichText(_ pasteboard: NSPasteboard, sourceApp: String?, sourceBundleId: String?) -> ClipboardItem? {
+  private func itemFromRichText(_ pasteboard: NSPasteboard, source: CaptureSource) -> ClipboardItem? {
     guard let data = pasteboard.data(forType: .rtf) else { return nil }
     guard payloadIsWithinLimit(data, kind: "Rich text") else { return nil }
     guard let attributed = NSAttributedString(rtf: data, documentAttributes: nil) else {
       reportReadFailureStatus("Clipboard pasteboard reported RTF but text could not be read.")
       return nil
     }
-    return capturedRichText(
-      attributed: attributed, hashData: data, title: "Rich text", sourceApp: sourceApp, sourceBundleId: sourceBundleId, cacheData: { data })
+    return capturedRichText(attributed: attributed, hashData: data, title: "Rich text", source: source, cacheData: { data })
   }
 
-  private func itemFromHTMLRichText(_ pasteboard: NSPasteboard, sourceApp: String?, sourceBundleId: String?) -> ClipboardItem? {
+  private func itemFromHTMLRichText(_ pasteboard: NSPasteboard, source: CaptureSource) -> ClipboardItem? {
     guard let htmlData = htmlData(from: pasteboard) else { return nil }
     guard payloadIsWithinLimit(htmlData, kind: "HTML text") else { return nil }
     guard let attributed = attributedString(fromHTMLData: htmlData) else {
@@ -479,7 +432,7 @@ final class ClipboardMonitorService {
     }
 
     return capturedRichText(
-      attributed: attributed, hashData: htmlData, title: "HTML text", sourceApp: sourceApp, sourceBundleId: sourceBundleId,
+      attributed: attributed, hashData: htmlData, title: "HTML text", source: source,
       cacheData: {
         guard let data = attributed.rtf(from: NSRange(location: 0, length: attributed.length), documentAttributes: [:]) else {
           reportReadFailureStatus("Failed to convert HTML clipboard data for clipboard history.")
@@ -490,7 +443,7 @@ final class ClipboardMonitorService {
   }
 
   private func capturedRichText(
-    attributed: NSAttributedString, hashData: Data, title: String, sourceApp: String?, sourceBundleId: String?, cacheData: () -> Data?
+    attributed: NSAttributedString, hashData: Data, title: String, source: CaptureSource, cacheData: () -> Data?
   ) -> ClipboardItem? {
     let text = attributed.string.clipboardTrimmed
     guard !text.isEmpty else {
@@ -498,7 +451,7 @@ final class ClipboardMonitorService {
       return nil
     }
     if configuration.excludeSensitive,
-      SensitiveContentDetector.isLikelySensitive(text, sourceBundleId: sourceBundleId, sourceApp: sourceApp)
+      SensitiveContentDetector.isLikelySensitive(text, sourceBundleId: source.bundleId, sourceApp: source.name)
     {
       reportReadFailureStatus("\(title) was ignored because it looks sensitive.")
       return nil
@@ -509,30 +462,27 @@ final class ClipboardMonitorService {
       reportReadFailureStatus("Failed to cache \(title == "Rich text" ? "rich text" : title) for clipboard history.")
       return nil
     }
-    return capturedItem(
-      kind: .richText, displayText: text, payload: path, hash: store.hashData(hashData), sourceApp: sourceApp,
-      sourceBundleId: sourceBundleId, id: id)
+    return capturedItem(kind: .richText, displayText: text, payload: path, hash: store.hashData(hashData), source: source, id: id)
   }
 
-  private func itemFromFiles(_ pasteboard: NSPasteboard, sourceApp: String?, sourceBundleId: String?) -> ClipboardItem? {
+  private func itemFromFiles(_ pasteboard: NSPasteboard, source: CaptureSource) -> ClipboardItem? {
     guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty else { return nil }
 
     let fileURLs = urls.filter(\.isFileURL)
     guard !fileURLs.isEmpty else { return nil }
     let text = FilePayload.payload(from: fileURLs)
     let display = fileURLs.count == 1 ? text : "\(fileURLs.count) files"
-    return capturedItem(
-      kind: .file, displayText: display, payload: text, hash: store.hashString(text), sourceApp: sourceApp, sourceBundleId: sourceBundleId)
+    return capturedItem(kind: .file, displayText: display, payload: text, hash: store.hashString(text), source: source)
   }
 
   private func capturedItem(
-    kind: ClipboardItemKind, displayText: String, payload: String, hash: String, sourceApp: String?, sourceBundleId: String?,
-    id: UUID = UUID(), imagePath: String? = nil, thumbnailPath: String? = nil, ocrText: String? = nil
+    kind: ClipboardItemKind, displayText: String, payload: String, hash: String, source: CaptureSource, id: UUID = UUID(),
+    imagePath: String? = nil, thumbnailPath: String? = nil, ocrText: String? = nil
   ) -> ClipboardItem {
     let now = Date()
     return ClipboardItem(
       id: id, kind: kind, displayText: displayText, payload: payload, payloadHash: hash, createdAt: now, lastUsedAt: now, useCount: 1,
-      sourceApp: sourceApp, imagePath: imagePath, thumbnailPath: thumbnailPath, sourceAppBundleId: sourceBundleId, ocrText: ocrText)
+      sourceApp: source.name, imagePath: imagePath, thumbnailPath: thumbnailPath, sourceAppBundleId: source.bundleId, ocrText: ocrText)
   }
 
   private func detectURL(_ candidate: String) -> URL? {
@@ -550,6 +500,29 @@ final class ClipboardMonitorService {
     if let comps = URLComponents(string: "https://" + candidate), let host = comps.host, host.contains(".") { return comps.url }
 
     return nil
+  }
+
+  private typealias CaptureSource = (name: String?, bundleId: String?)
+
+  private struct CaptureReader {
+    let kind: ClipboardItemKind
+    let present: () -> Bool
+    let terminal: () -> Bool
+    let read: () -> ClipboardItem?
+
+    init(
+      _ kind: ClipboardItemKind, present: @escaping () -> Bool, terminal: @escaping () -> Bool = { false },
+      read: @escaping () -> ClipboardItem?
+    ) {
+      self.kind = kind
+      self.present = present
+      self.terminal = terminal
+      self.read = read
+    }
+  }
+
+  private func reportIgnoredKind(_ kind: ClipboardItemKind) {
+    reportReadFailureStatus("\(displayNameForStatus(kind)) items are ignored in capture settings.")
   }
 
   private struct PasteboardURLPayload {

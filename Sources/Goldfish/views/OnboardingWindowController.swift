@@ -84,10 +84,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
       attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: ClipboardShelfStyle.secondaryText, .kern: 2])
     let heading = label("A little less lost.\nA lot more found.", size: 32, weight: .bold)
     let subtitle = label("Your links, ideas, and everyday copies.\nOne shortcut away.", size: 14, color: ClipboardShelfStyle.secondaryText)
-    let words = NSStackView(views: [brand, heading, subtitle])
-    words.orientation = .vertical
-    words.alignment = .leading
-    words.spacing = 14
+    let words = NativeUI.stack([brand, heading, subtitle], axis: .vertical, alignment: .leading, spacing: 14)
     words.setCustomSpacing(12, after: heading)
     let preview = WelcomeShelfPreview()
     for view in [words, preview] {
@@ -119,10 +116,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     )
     let permissionRow = optionRow(
       symbol: "cursorarrow.click", title: "Paste directly into apps", subtitle: permissionStatusLabel, control: permissionButton)
-    let rows = NSStackView(views: [shortcutRow, permissionRow])
-    rows.orientation = .vertical
-    rows.spacing = 0
-    rows.alignment = .leading
+    let rows = NativeUI.stack([shortcutRow, permissionRow], axis: .vertical, alignment: .leading, spacing: 0)
     rows.translatesAutoresizingMaskIntoConstraints = false
     options.addSubview(rows)
     NSLayoutConstraint.activate([
@@ -137,10 +131,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     privacyIcon.heightAnchor.constraint(equalToConstant: 16).isActive = true
     privacyLabel.font = .systemFont(ofSize: 11)
     privacyLabel.textColor = ClipboardShelfStyle.secondaryText
-    let privacy = NSStackView(views: [privacyIcon, privacyLabel])
-    privacy.orientation = .horizontal
-    privacy.spacing = 7
-    privacy.alignment = .centerY
+    let privacy = NativeUI.stack([privacyIcon, privacyLabel], axis: .horizontal, alignment: .centerY, spacing: 7)
     let finish = WelcomeButton(title: "Start using Goldfish  →", primary: true)
     finish.target = self
     finish.action = #selector(finishSetup)
@@ -150,15 +141,9 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     finish.heightAnchor.constraint(equalToConstant: 44).isActive = true
     let note = label(
       "Start saves your future copies locally.\nClose this window to set up later.", size: 12, color: ClipboardShelfStyle.secondaryText)
-    let footer = NSStackView(views: [note, NSView(), finish])
-    footer.orientation = .horizontal
-    footer.spacing = 16
-    footer.alignment = .centerY
+    let footer = NativeUI.stack([note, NSView(), finish], axis: .horizontal, alignment: .centerY, spacing: 16)
     footer.arrangedSubviews[1].setContentHuggingPriority(.defaultLow, for: .horizontal)
-    let stack = NSStackView(views: [hero, options, privacy, footer])
-    stack.orientation = .vertical
-    stack.alignment = .leading
-    stack.spacing = 18
+    let stack = NativeUI.stack([hero, options, privacy, footer], axis: .vertical, alignment: .leading, spacing: 18)
     stack.setCustomSpacing(24, after: hero)
     stack.setCustomSpacing(24, after: privacy)
     stack.translatesAutoresizingMaskIntoConstraints = false
@@ -177,24 +162,16 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     icon.contentTintColor = ClipboardShelfStyle.secondaryText
     icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 19, weight: .regular)
     icon.widthAnchor.constraint(equalToConstant: 24).isActive = true
-    let text = NSStackView(views: [label(title, size: 14, weight: .medium), subtitle])
-    text.orientation = .vertical
-    text.alignment = .leading
-    text.spacing = 4
-    let row = NSStackView(views: [icon, text, NSView(), control])
-    row.orientation = .horizontal
-    row.alignment = .centerY
-    row.spacing = 12
-    row.edgeInsets = NSEdgeInsets(top: 0, left: 18, bottom: 0, right: 16)
+    let text = NativeUI.stack([label(title, size: 14, weight: .medium), subtitle], axis: .vertical, alignment: .leading, spacing: 4)
+    let row = NativeUI.stack(
+      [icon, text, NSView(), control],
+      axis: .horizontal, alignment: .centerY, spacing: 12, insets: NSEdgeInsets(top: 0, left: 18, bottom: 0, right: 16))
     row.arrangedSubviews[2].setContentHuggingPriority(.defaultLow, for: .horizontal)
     row.heightAnchor.constraint(equalToConstant: 76).isActive = true
     return row
   }
   private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor) -> NSTextField {
-    let label = NSTextField(labelWithString: text)
-    label.font = .systemFont(ofSize: size, weight: weight)
-    label.textColor = color
-    label.maximumNumberOfLines = 0
+    let label = NativeUI.label(text, font: .systemFont(ofSize: size, weight: weight), color: color, maxLines: 0)
     label.setContentCompressionResistancePriority(.required, for: .horizontal)
     return label
   }

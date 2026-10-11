@@ -12,15 +12,15 @@ enum ClipboardCollectionVisuals {
     switch mode {
     case .mostRecent: return .secondaryLabelColor
     case .mostUsed: return NSColor(calibratedRed: 0.58, green: 0.42, blue: 0.92, alpha: 1)
-    case .text: return NSColor(calibratedRed: 0.96, green: 0.64, blue: 0.00, alpha: 1)
-    case .links: return NSColor(calibratedRed: 0.02, green: 0.47, blue: 0.98, alpha: 1)
-    case .images: return NSColor(calibratedRed: 1.00, green: 0.22, blue: 0.25, alpha: 1)
-    case .colors: return NSColor(calibratedRed: 0.00, green: 0.65, blue: 0.74, alpha: 1)
-    case .audio: return NSColor(calibratedRed: 0.93, green: 0.12, blue: 0.34, alpha: 1)
-    case .files: return NSColor(calibratedRed: 0.11, green: 0.68, blue: 0.36, alpha: 1)
-    case .pinned: return NSColor(calibratedRed: 0.94, green: 0.12, blue: 0.48, alpha: 1)
-    case .code: return NSColor(calibratedRed: 0.25, green: 0.38, blue: 0.78, alpha: 1)
-    case .videos: return NSColor(calibratedRed: 0.43, green: 0.32, blue: 0.94, alpha: 1)
+    case .text: return ClipboardItemKind.text.presentation.accentColor
+    case .links: return ClipboardItemKind.url.presentation.accentColor
+    case .images: return ClipboardItemKind.image.presentation.accentColor
+    case .colors: return ClipboardItemKind.color.presentation.accentColor
+    case .audio: return ClipboardItemKind.audio.presentation.accentColor
+    case .files: return ClipboardItemKind.file.presentation.accentColor
+    case .pinned: return ClipboardItemKind.richText.presentation.accentColor
+    case .code: return ClipboardItemKind.code.presentation.accentColor
+    case .videos: return ClipboardItemKind.video.presentation.accentColor
     }
   }
 
