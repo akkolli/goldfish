@@ -346,15 +346,15 @@ final class ShelfModel {
       return
     }
 
-    thumbnailRequestLock.lock()
-    if var completions = thumbnailCompletionsByRequest[requestKey] {
-      completions.append(completion)
-      thumbnailCompletionsByRequest[requestKey] = completions
-      thumbnailRequestLock.unlock()
-      return
+    let needsLoad = thumbnailRequestLock.withLock {
+      if thumbnailCompletionsByRequest[requestKey] != nil {
+        thumbnailCompletionsByRequest[requestKey]?.append(completion)
+        return false
+      }
+      thumbnailCompletionsByRequest[requestKey] = [completion]
+      return true
     }
-    thumbnailCompletionsByRequest[requestKey] = [completion]
-    thumbnailRequestLock.unlock()
+    guard needsLoad else { return }
 
     thumbnailLoadQueue.addOperation { [self] in
       let thumbnail = self.thumbnailLoader(item)
@@ -456,16 +456,10 @@ final class ShelfModel {
 
   func pasteSelectedPlainText() { performSelectedTransfer(.paste, asPlainText: true) }
 
-  func pasteItem(at index: Int) {
+  func pasteItem(at index: Int, asPlainText: Bool = false) {
     guard visibleItems.indices.contains(index) else { return }
     selectItem(at: index)
-    pasteSelected()
-  }
-
-  func pasteItemPlainText(at index: Int) {
-    guard visibleItems.indices.contains(index) else { return }
-    selectItem(at: index)
-    pasteSelectedPlainText()
+    performSelectedTransfer(.paste, asPlainText: asPlainText)
   }
 
   func copySelected() { performSelectedTransfer(.copy) }
@@ -1130,9 +1124,7 @@ final class ShelfModel {
   }
 
   private func finishThumbnailRequest(_ requestKey: ThumbnailRequestKey, thumbnail: NSImage?) {
-    thumbnailRequestLock.lock()
-    let completions = thumbnailCompletionsByRequest.removeValue(forKey: requestKey) ?? []
-    thumbnailRequestLock.unlock()
+    let completions = thumbnailRequestLock.withLock { thumbnailCompletionsByRequest.removeValue(forKey: requestKey) ?? [] }
     guard !completions.isEmpty else { return }
 
     DispatchQueue.main.async { for completion in completions { completion(thumbnail) } }

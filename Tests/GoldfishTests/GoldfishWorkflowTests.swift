@@ -10,6 +10,18 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     try super.setUpWithError()
   }
 
+  func testShelfShortcutsRespectSearchFocusAndModifiers() {
+    let cases: [(UInt16, NSEvent.ModifierFlags, String?, ShelfKeyAction?)] = [
+      (8, .command, "quartz", nil), (8, .command, nil, .command(.copy)), (49, [], "", .command(.preview)), (49, [], "quartz", nil),
+      (18, [.command, .shift], nil, .paste(index: 0, plain: true)), (18, [.command, .option], nil, .destination(.mostRecent)),
+      (36, .shift, "quartz", .command(.pastePlainText)), (53, [], nil, .cancel),
+    ]
+    for (code, flags, text, action) in cases {
+      XCTAssertEqual(
+        ShelfKeyAction.key(code, modifiers: flags, settingsShortcut: AppConfig.defaultSettingsShortcut, searchText: text), action)
+    }
+  }
+
   func testCopyCaptureSearchTransferAndEncryptedRelaunch() throws {
     let monitor = ClipboardMonitor(
       pasteboard: pasteboard, store: store, cacheService: cache, settings: settings, frontmostApp: { (nil, nil) })

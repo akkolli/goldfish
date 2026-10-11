@@ -166,16 +166,12 @@ private final class KeychainBackedKeyProvider {
 
     DispatchQueue.global(qos: .utility).async {
       let value = operation()
-      lock.lock()
-      result = value
-      lock.unlock()
+      lock.withLock { result = value }
       semaphore.signal()
     }
 
     guard semaphore.wait(timeout: .now() + keychainTimeout) == .success else { return nil }
-    lock.lock()
-    defer { lock.unlock() }
-    return result
+    return lock.withLock { result }
   }
 
   private func baseQuery() -> [String: Any] {

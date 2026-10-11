@@ -206,11 +206,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     Self.makeStatusMenu(
       presentation: Self.statusMenuPresentation(
         historyCount: store.items.count, isCapturePaused: settings.pauseCapture, pauseCaptureUntil: settings.pauseCaptureUntil,
-        captureStatus: settings.status(.capture), pasteStatus: settings.status(.paste),
-        shortcutStatus: settings.status(.shortcut), accessibilityStatus: settings.status(.accessibility),
-        launchAtLoginStatus: settings.status(.launch), onboardingCompleted: settings.onboardingCompleted),
-      isCapturePaused: settings.pauseCapture, openShortcut: settings.openShortcut, settingsShortcut: settings.settingsShortcut, target: self
-    )
+        captureStatus: settings.status(.capture), pasteStatus: settings.status(.paste), shortcutStatus: settings.status(.shortcut),
+        accessibilityStatus: settings.status(.accessibility), launchAtLoginStatus: settings.status(.launch),
+        onboardingCompleted: settings.onboardingCompleted), isCapturePaused: settings.pauseCapture, openShortcut: settings.openShortcut,
+      settingsShortcut: settings.settingsShortcut, target: self)
   }
 
   private func refreshStatusMenu() { statusMenu = statusMenuTemplate() }
@@ -239,42 +238,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   ) -> NSMenu {
     let menu = NSMenu(title: "Goldfish")
     menu.autoenablesItems = false
-    let status = addDisabledMenuItem(presentation.summary, to: menu, symbolName: presentation.symbolName)
+    @discardableResult func action(
+      _ title: String, _ selector: Selector, _ symbol: String, in destination: NSMenu? = nil, key: String = "",
+      modifiers: NSEvent.ModifierFlags = [], shortcut: ShortcutBinding? = nil
+    ) -> NSMenuItem {
+      let item = NSMenuItem(title: title, action: selector, keyEquivalent: shortcut?.key ?? key)
+      item.keyEquivalentModifierMask = shortcut.map(modifierFlags) ?? modifiers
+      item.target = target
+      item.image = menuImage(symbol)
+      (destination ?? menu).addItem(item)
+      return item
+    }
+    let status = NSMenuItem(title: presentation.summary, action: nil, keyEquivalent: "")
+    status.isEnabled = false
+    status.image = menuImage(presentation.symbolName)
     status.toolTip = presentation.detail
-    menu.addItem(NSMenuItem.separator())
-
-    addActionMenuItem(
-      "Open Goldfish", action: #selector(openClipboardPanel), target: target, keyEquivalent: openShortcut.key,
-      keyEquivalentModifierMask: modifierFlags(for: openShortcut), symbolName: "rectangle.bottomthird.inset.filled", to: menu)
+    menu.addItem(status)
+    menu.addItem(.separator())
+    action("Open Goldfish", #selector(openClipboardPanel), "rectangle.bottomthird.inset.filled", shortcut: openShortcut)
     if isCapturePaused {
-      addActionMenuItem(
-        "Resume Capture", action: #selector(togglePauseCapture), target: target, keyEquivalent: "t", keyEquivalentModifierMask: .command,
-        symbolName: "play.fill", to: menu)
+      action("Resume Capture", #selector(togglePauseCapture), "play.fill", key: "t", modifiers: .command)
     } else {
       let pauseMenu = NSMenu(title: "Pause Capture")
       pauseMenu.autoenablesItems = false
       for duration in temporaryPauseDurations {
-        let item = addActionMenuItem(
-          duration.title, action: #selector(pauseCaptureForDuration(_:)), target: target, symbolName: duration.symbolName, to: pauseMenu)
-        item.representedObject = duration.seconds
+        action(duration.title, #selector(pauseCaptureForDuration(_:)), duration.symbolName, in: pauseMenu).representedObject =
+          duration.seconds
       }
-      pauseMenu.addItem(NSMenuItem.separator())
-      addActionMenuItem(
-        "Until resumed", action: #selector(togglePauseCapture), target: target, keyEquivalent: "t", keyEquivalentModifierMask: .command,
-        symbolName: "pause.fill", to: pauseMenu)
+      pauseMenu.addItem(.separator())
+      action("Until resumed", #selector(togglePauseCapture), "pause.fill", in: pauseMenu, key: "t", modifiers: .command)
       let pause = NSMenuItem(title: "Pause Capture", action: nil, keyEquivalent: "")
       pause.image = menuImage("pause.circle")
       pause.submenu = pauseMenu
       menu.addItem(pause)
     }
-
-    menu.addItem(NSMenuItem.separator())
-    addActionMenuItem(
-      "Settings\u{2026}", action: #selector(openSettings), target: target, keyEquivalent: settingsShortcut.key,
-      keyEquivalentModifierMask: modifierFlags(for: settingsShortcut), symbolName: "gearshape", to: menu)
-    addActionMenuItem(
-      "Quit Goldfish", action: #selector(quitApp), target: target, keyEquivalent: "q", keyEquivalentModifierMask: .command,
-      symbolName: "power", to: menu)
+    menu.addItem(.separator())
+    action("Settings…", #selector(openSettings), "gearshape", shortcut: settingsShortcut)
+    action("Quit Goldfish", #selector(quitApp), "power", key: "q", modifiers: .command)
     return menu
   }
 
@@ -394,27 +394,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let collapsed = value.split { $0.isWhitespace || $0.isNewline }.joined(separator: " ").clipboardTrimmed
     guard collapsed.count > statusMenuTextLimit else { return collapsed }
     return String(collapsed.prefix(statusMenuTextLimit - 3)).clipboardTrimmed + "..."
-  }
-
-  @discardableResult private static func addDisabledMenuItem(_ title: String, to menu: NSMenu, symbolName: String) -> NSMenuItem {
-    let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-    item.isEnabled = false
-    item.image = menuImage(symbolName)
-    menu.addItem(item)
-    return item
-  }
-
-  @discardableResult private static func addActionMenuItem(
-    _ title: String, action: Selector, target: AnyObject?, keyEquivalent: String = "",
-    keyEquivalentModifierMask: NSEvent.ModifierFlags = [], symbolName: String, to menu: NSMenu
-  ) -> NSMenuItem {
-    let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
-    item.keyEquivalentModifierMask = keyEquivalentModifierMask
-    item.target = target
-    item.isEnabled = true
-    item.image = menuImage(symbolName)
-    menu.addItem(item)
-    return item
   }
 
   private static func menuImage(_ symbolName: String) -> NSImage? {
@@ -578,17 +557,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
-  private var isCloudSyncPushSuppressed: Bool {
-    cloudSyncStateLock.lock()
-    defer { cloudSyncStateLock.unlock() }
-    return suppressCloudSyncPush
-  }
+  private var isCloudSyncPushSuppressed: Bool { cloudSyncStateLock.withLock { suppressCloudSyncPush } }
 
-  private func setCloudSyncPushSuppressed(_ suppressed: Bool) {
-    cloudSyncStateLock.lock()
-    suppressCloudSyncPush = suppressed
-    cloudSyncStateLock.unlock()
-  }
+  private func setCloudSyncPushSuppressed(_ suppressed: Bool) { cloudSyncStateLock.withLock { suppressCloudSyncPush = suppressed } }
 
   private func applyCapturePauseSetting(now: Date = Date()) {
     guard settings.onboardingCompleted else {
@@ -700,13 +671,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
 
-    let alert = NSAlert()
-    alert.messageText = "Allow automatic paste?"
-    alert.informativeText =
-      "Goldfish captures history without extra permission. Grant Accessibility only for direct paste; otherwise paste actions copy the clip."
-    alert.addButton(withTitle: "Open Accessibility Settings")
-    alert.addButton(withTitle: "Later")
-    alert.alertStyle = .warning
+    let alert = NSAlert(
+      title: "Allow automatic paste?",
+      message:
+        "Goldfish captures history without extra permission. Grant Accessibility only for direct paste; otherwise paste actions copy the clip.",
+      buttons: ["Open Accessibility Settings", "Later"])
 
     if alert.runModal() == .alertFirstButtonReturn {
       _ = AccessibilityPermissionService.requestPromptIfNeeded()
@@ -757,11 +726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // LaunchServices and UI automation otherwise see an app that never
     // completed launch while this warning is onscreen.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-      let alert = NSAlert()
-      alert.messageText = "Some History Could Not Be Decrypted"
-      alert.informativeText = warning
-      alert.alertStyle = .critical
-      alert.addButton(withTitle: "OK")
+      let alert = NSAlert(title: "Some History Could Not Be Decrypted", message: warning, style: .critical, buttons: ["OK"])
       alert.runModal()
     }
   }

@@ -6,7 +6,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     static let minimumWindowSize = NSSize(width: 740, height: 460)
     static let settingsLabelWidth: CGFloat = 128
   }
-  private static let tabTitles = ["General", "Shortcuts", "Capture", "Privacy", "Performance", "Data"]
   private static let allowedContentTypesValidationMessage = "At least one content type must stay enabled."
   private static let allowedContentTypesUpdatedMessage = "Allowed content types updated."
   private let settings: SettingsModel
@@ -80,12 +79,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   private func makeContentView() -> NSView {
     tabView.translatesAutoresizingMaskIntoConstraints = false
     tabView.tabViewType = .noTabsNoBorder
-    tabView.addTabViewItem(tab("General", generalSettingsView()))
-    tabView.addTabViewItem(tab("Shortcuts", shortcutSettingsView()))
-    tabView.addTabViewItem(tab("Capture", captureSettingsView()))
-    tabView.addTabViewItem(tab("Privacy", privacySettingsView()))
-    tabView.addTabViewItem(tab("Performance", performanceSettingsView()))
-    tabView.addTabViewItem(tab("Data", dataSettingsView()))
+    let pages: [(title: String, subtitle: String, symbol: String, view: NSView)] = [
+      ("General", "Make Goldfish feel at home on your Mac.", "slider.horizontal.3", generalSettingsView()),
+      ("Shortcuts", "Keep your hands on the keyboard.", "command", shortcutSettingsView()),
+      ("Capture", "Choose what your clipboard remembers.", "doc.on.clipboard", captureSettingsView()),
+      ("Privacy", "Control how your history is stored and shared.", "lock.shield", privacySettingsView()),
+      ("Performance", "Balance responsiveness and storage.", "speedometer", performanceSettingsView()),
+      ("Data", "Back up, restore, and manage your history.", "externaldrive", dataSettingsView()),
+    ]
 
     statusLabels.values.forEach(configureStatusLabel)
     let sidebar = NSVisualEffectView()
@@ -97,15 +98,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     brandIcon.contentTintColor = ShelfStyle.brandAccent
     brandIcon.widthAnchor.constraint(equalToConstant: 26).isActive = true
     let brandRow = NativeUI.stack([brandIcon, brand], spacing: 8)
-    let symbols = ["slider.horizontal.3", "command", "doc.on.clipboard", "lock.shield", "speedometer", "externaldrive"]
     let navigation = NSStackView()
     navigation.orientation = .vertical
     navigation.alignment = .leading
     navigation.spacing = 4
-    for (index, title) in Self.tabTitles.enumerated() {
+    for (index, page) in pages.enumerated() {
+      let title = page.title
+      tabView.addTabViewItem(tab(title, subtitle: page.subtitle, page.view))
       let button = ShelfNavigationButton(title: title, target: self, action: #selector(settingsSectionChanged(_:)))
       button.tag = index
-      button.image = NSImage(systemSymbolName: symbols[index], accessibilityDescription: nil)
+      button.image = NSImage(systemSymbolName: page.symbol, accessibilityDescription: nil)
       button.imagePosition = .imageLeading
       button.image?.size = NSSize(width: 16, height: 16)
       button.alignment = .left
@@ -162,16 +164,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     tabView.selectedTabViewItem?.view?.layoutSubtreeIfNeeded()
   }
 
-  private func tab(_ title: String, _ view: NSView) -> NSTabViewItem {
+  private func tab(_ title: String, subtitle: String, _ view: NSView) -> NSTabViewItem {
     let item = NSTabViewItem(identifier: title)
     item.label = title
     let heading = NativeUI.label(title, font: .systemFont(ofSize: 25, weight: .bold))
-    let subtitles = [
-      "General": "Make Goldfish feel at home on your Mac.", "Shortcuts": "Keep your hands on the keyboard.",
-      "Capture": "Choose what your clipboard remembers.", "Privacy": "Control how your history is stored and shared.",
-      "Performance": "Balance responsiveness and storage.", "Data": "Back up, restore, and manage your history.",
-    ]
-    let introduction = caption(subtitles[title] ?? "")
+    let introduction = caption(subtitle)
     introduction.font = .systemFont(ofSize: 13)
     let header = NativeUI.stack([heading, introduction], axis: .vertical, alignment: .leading, spacing: 7)
     let content = page([header, view])
@@ -651,7 +648,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   private func requestAccessibilityAccess() {
     _ = AccessibilityPermissionService.requestPromptIfNeeded()
     if !AccessibilityPermissionService.isTrusted { AccessibilityPermissionService.openSystemSettings() }
-    settings.setStatus(.accessibility, AccessibilityPermissionService.isTrusted ? "" : "Accessibility permission not granted.")
     refreshAccessibilityPermissionStatus()
   }
 
@@ -690,20 +686,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
   private func chooseArchive(exporting: Bool) {
     guard let window, window.attachedSheet == nil else { return }
-    let panel: NSSavePanel
-    if exporting {
-      panel = NSSavePanel()
-      panel.title = "Export Goldfish Archive"
-      panel.nameFieldStringValue = ArchivePicker.suggestedName(defaultArchiveFileName())
-    } else {
-      let picker = NSOpenPanel()
-      picker.title = "Import Goldfish Archive"
-      picker.canChooseFiles = true
-      picker.canChooseDirectories = false
-      picker.allowsMultipleSelection = false
-      panel = picker
-    }
-    ArchivePicker.configure(panel)
+    let panel = ArchivePicker.panel(exporting: exporting)
     panel.beginSheetModal(for: window) { [weak self] response in
       guard response == .OK, let url = panel.url else { return }
       self?.runArchiveOperation(exporting ? .export(url) : .import(url))
@@ -800,23 +783,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
   private func confirmDestructiveAction(title: String, message: String, buttonTitle: String, onConfirm: @escaping () -> Void) {
     guard let window, window.attachedSheet == nil else { return }
-    let alert = NSAlert()
-    alert.messageText = title
-    alert.informativeText = message
-    alert.alertStyle = .warning
-    alert.addButton(withTitle: "Cancel")
-    alert.addButton(withTitle: buttonTitle)
+    let alert = NSAlert(title: title, message: message, buttons: ["Cancel", buttonTitle])
     alert.buttons[0].keyEquivalent = "\u{1b}"
     alert.buttons[1].keyEquivalent = ""
     alert.window.defaultButtonCell = nil
     alert.window.initialFirstResponder = alert.buttons[0]
     alert.beginSheetModal(for: window) { response in if response == .alertSecondButtonReturn { onConfirm() } }
-  }
-
-  private func defaultArchiveFileName() -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd-HHmm"
-    return "Goldfish-\(formatter.string(from: Date())).\(HistoryArchive.fileExtension)"
   }
 
   private func shortcutValidationMessage(for binding: ShortcutBinding, isOpenShortcut: Bool) -> String? {

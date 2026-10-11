@@ -45,10 +45,6 @@ final class ShelfController: NSObject, NSWindowDelegate {
   private var isPresentingPreview = false
   private var isDismissingPreviews = false
   private var screenParametersObserver: NSObjectProtocol?
-  private static let quickPasteKeyCodes: [UInt16: Int] = [18: 0, 19: 1, 20: 2, 21: 3, 23: 4, 22: 5, 26: 6, 28: 7, 25: 8]
-  private static let collectionShortcuts: [UInt16: ShelfFilter] = [
-    18: .mostRecent, 19: .mostUsed, 20: .text, 21: .links, 23: .images, 22: .files, 26: .pinned, 28: .audio, 25: .colors, 29: .code,
-  ]
 
   private let viewModel: ShelfModel
 
@@ -301,12 +297,13 @@ final class ShelfController: NSObject, NSWindowDelegate {
       guard let self, self.visibilityAnimationGeneration == generation, self.isVisible, !self.isPresentingPreview,
         self.panel.attachedSheet == nil
       else { return }
-      let ownedWindows = [
-        self.panel, self.previewController?.window, self.panelView.presentedMenuWindow, self.panelView.presentedTextEditorWindow,
-      ]
-      guard !ownedWindows.contains(where: { $0?.isKeyWindow == true }) else { return }
+      guard !self.ownedWindows.contains(where: \.isKeyWindow) else { return }
       self.dismissForOutsideInteraction()
     }
+  }
+
+  private var ownedWindows: [NSWindow] {
+    [panel, previewController?.window, panelView.presentedMenuWindow, panelView.presentedTextEditorWindow].compactMap { $0 }
   }
 
   private func dismissForOutsideInteraction() {
@@ -336,23 +333,14 @@ final class ShelfController: NSObject, NSWindowDelegate {
   }
 
   func windowDidBecomeKey(_ notification: Notification) {
-    if let editor = panelView.presentedTextEditorWindow, editor.isVisible {
-      DispatchQueue.main.async { [weak self, weak editor] in
-        guard let self, let editor, self.isVisible, self.panel.isKeyWindow, self.panelView.presentedTextEditorWindow === editor else {
-          return
-        }
-        editor.makeKeyAndOrderFront(nil)
-      }
-      return
-    }
-    if let menu = panelView.presentedMenuWindow, menu.isVisible {
-      // Nonactivating panels can briefly give focus back to the mouse-down
-      // window after its button opens a child. Keep the menu's keyboard scope.
-      DispatchQueue.main.async { [weak self, weak menu] in
-        guard let self, let menu, self.isVisible, self.panelView.presentedMenuWindow === menu, menu.isVisible, self.panel.isKeyWindow else {
-          return
-        }
-        menu.makeKeyAndOrderFront(nil)
+    if let child = panelView.presentedTextEditorWindow ?? panelView.presentedMenuWindow, child.isVisible {
+      // Nonactivating panels can briefly return focus to their mouse-down owner.
+      // Restore the current accessory only; a newer editor/menu owns its scope.
+      DispatchQueue.main.async { [weak self, weak child] in
+        guard let self, let child, self.isVisible, self.panel.isKeyWindow, child.isVisible,
+          (self.panelView.presentedTextEditorWindow ?? self.panelView.presentedMenuWindow) === child
+        else { return }
+        child.makeKeyAndOrderFront(nil)
       }
       return
     }
@@ -465,42 +453,18 @@ final class ShelfController: NSObject, NSWindowDelegate {
   }
 
   private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
-    guard shouldHandlePanelKeyEvent(event) else { return event }
-    if panelView.isSearchFieldEditing,
-      Self.searchFieldPreviewShortcut(
-        forKeyCode: event.keyCode, modifiers: event.modifierFlags, searchText: panelView.searchTextForKeyboardShortcut)
-    {
-      previewSelected()
-    } else if let index = Self.quickPasteIndex(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
-      viewModel.pasteItem(at: index)
-    } else if let index = Self.quickPastePlainTextIndex(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
-      viewModel.pasteItemPlainText(at: index)
-    } else if let mode = Self.collectionShortcutMode(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
-      viewModel.sortMode = mode
-    } else if Self.matchesShortcut(keyCode: event.keyCode, modifiers: event.modifierFlags, binding: settings.settingsShortcut) {
-      requestSettings()
-    } else if let action = Self.commandShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
-      if panelView.isSearchFieldEditing, [.copy, .undoDelete, .adjacentCollection(-1), .adjacentCollection(1)].contains(action) {
-        return event
-      }
-      performShortcutAction(action)
-    } else if let action = Self.modifiedShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags) {
-      performShortcutAction(action)
-    } else {
-      guard !panelView.isSearchFieldEditing else { return event }
-      if let action = Self.selectionShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
-        ?? Self.navigationShortcutAction(forKeyCode: event.keyCode, modifiers: event.modifierFlags)
-      {
-        panelView.navigate(action, fromPanel: true)
-      } else {
-        switch event.keyCode {
-        case 53: if !panelView.clearSearchForKeyboardCancel() { hide() }
-        case 49: previewSelected()
-        case 36: viewModel.pasteSelected()
-        case 51, 117: viewModel.deleteSelected()
-        default: return event
-        }
-      }
+    guard shouldHandlePanelKeyEvent(event),
+      let action = ShelfKeyAction.key(
+        event.keyCode, modifiers: event.modifierFlags, settingsShortcut: settings.settingsShortcut,
+        searchText: panelView.isSearchFieldEditing ? panelView.searchTextForKeyboardShortcut : nil)
+    else { return event }
+    switch action {
+    case .command(let command): performShortcutAction(command)
+    case .paste(let index, let plain): viewModel.pasteItem(at: index, asPlainText: plain)
+    case .destination(let mode): viewModel.sortMode = mode
+    case .navigate(let navigation): panelView.navigate(navigation, fromPanel: true)
+    case .settings: requestSettings()
+    case .cancel: if !panelView.clearSearchForKeyboardCancel() { hide() }
     }
     return nil
   }
@@ -577,62 +541,6 @@ final class ShelfController: NSObject, NSWindowDelegate {
     return event.windowNumber == panel.windowNumber || NSApp.window(withWindowNumber: event.windowNumber) === panel
   }
 
-  static func quickPasteIndex(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Int? {
-    let relevantModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
-    guard relevantModifiers == .command else { return nil }
-    return quickPasteKeyCodes[keyCode]
-  }
-
-  static func navigationShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ShelfNavigation? {
-    let flags = modifiers.intersection(.deviceIndependentFlagsMask)
-    if flags == .command {
-      return keyCode == 126 ? .endpoint(last: false, extend: false) : (keyCode == 125 ? .endpoint(last: true, extend: false) : nil)
-    }
-    return flags.isEmpty ? ShelfNavigation.key(keyCode, extend: false) : nil
-  }
-
-  static func selectionShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ShelfNavigation? {
-    let flags = modifiers.intersection(.deviceIndependentFlagsMask)
-    if flags == .command { return keyCode == 0 ? .all : nil }
-    return flags == .shift ? ShelfNavigation.key(keyCode, extend: true) : nil
-  }
-
-  static func quickPastePlainTextIndex(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Int? {
-    let relevantModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
-    guard relevantModifiers == [.command, .shift] else { return nil }
-    return quickPasteKeyCodes[keyCode]
-  }
-
-  static func collectionShortcutMode(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ShelfFilter? {
-    let relevantModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
-    guard relevantModifiers == [.command, .option] else { return nil }
-    return collectionShortcuts[keyCode]
-  }
-
-  static func searchFieldPreviewShortcut(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags, searchText: String) -> Bool {
-    let relevantModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
-    return keyCode == 49 && relevantModifiers.isEmpty && searchText.clipboardTrimmed.isEmpty
-  }
-
-  static func matchesShortcut(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, binding: ShortcutBinding) -> Bool {
-    guard ShortcutManager.virtualKeyCode(for: binding.key) == keyCode else { return false }
-    let relevantModifiers = modifiers.intersection(.deviceIndependentFlagsMask)
-    let bindingModifiers = NSEvent.ModifierFlags(rawValue: binding.modifierFlags).intersection(.deviceIndependentFlagsMask)
-    return relevantModifiers == bindingModifiers
-  }
-
-  static func commandShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipCommand? {
-    guard modifiers.intersection(.deviceIndependentFlagsMask) == .command else { return nil }
-    return ClipCommand.commandKeys[keyCode]
-  }
-
-  static func modifiedShortcutAction(forKeyCode keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> ClipCommand? {
-    let flags = modifiers.intersection(.deviceIndependentFlagsMask)
-    if flags == .shift { return keyCode == 36 ? .pastePlainText : nil }
-    guard flags == [.command, .shift] else { return nil }
-    return keyCode == 45 ? .createCollection : (keyCode == 9 ? .pastePlainText : nil)
-  }
-
   private func installClickMonitor() {
     removeClickMonitor()
     guard isVisible else { return }
@@ -650,12 +558,7 @@ final class ShelfController: NSObject, NSWindowDelegate {
       if NSApp.window(withWindowNumber: event.windowNumber) === self.panel { return }
 
       let point = NSEvent.mouseLocation
-      let ownedWindows = [
-        self.panel, self.previewController?.window, self.panelView.presentedMenuWindow, self.panelView.presentedTextEditorWindow,
-      ]
-      if !ownedWindows.contains(where: { $0?.isVisible == true && $0?.frame.contains(point) == true }) {
-        self.dismissForOutsideInteraction()
-      }
+      if !self.ownedWindows.contains(where: { $0.isVisible && $0.frame.contains(point) }) { self.dismissForOutsideInteraction() }
     }
   }
 

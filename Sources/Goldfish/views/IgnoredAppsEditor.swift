@@ -90,12 +90,11 @@ final class IgnoredAppsEditor: NSStackView, NSTableViewDataSource, NSTableViewDe
     let scroll = NSScrollView(frame: editor.frame)
     scroll.documentView = editor
     scroll.hasVerticalScroller = true
-    let alert = NSAlert()
-    alert.messageText = "Edit Ignored App Rules"
-    alert.informativeText = "One app name or bundle identifier per line. A rule matches part of the frontmost app’s name or identifier."
+    let alert = NSAlert(
+      title: "Edit Ignored App Rules",
+      message: "One app name or bundle identifier per line. A rule matches part of the frontmost app’s name or identifier.",
+      buttons: ["Save", "Cancel"])
     alert.accessoryView = scroll
-    alert.addButton(withTitle: "Save")
-    alert.addButton(withTitle: "Cancel")
     alert.window.initialFirstResponder = editor
     alert.beginSheetModal(for: window) { [weak self] result in
       guard result == .alertFirstButtonReturn else { return }

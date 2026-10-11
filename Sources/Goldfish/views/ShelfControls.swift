@@ -164,10 +164,7 @@ final class ShelfControls: NSObject {
       if let stack = view.superview as? NSStackView { stack.removeArrangedSubview(view) }
       view.removeFromSuperview()
     }
-    for view in navigationView.arrangedSubviews {
-      navigationView.removeArrangedSubview(view)
-      view.removeFromSuperview()
-    }
+    navigationView.removeAllArrangedSubviews()
     let spacer = NSView()
     spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
     spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -214,10 +211,7 @@ final class ShelfControls: NSObject {
   }
 
   private func rebuildDestinationButtons() {
-    for view in destinationsStack.arrangedSubviews {
-      destinationsStack.removeArrangedSubview(view)
-      view.removeFromSuperview()
-    }
+    destinationsStack.removeAllArrangedSubviews()
     destinationButtons = []
     let entries =
       [("All clips", "clock.arrow.circlepath", -1), ("Pinned", "pin", -2)]
@@ -253,10 +247,7 @@ final class ShelfControls: NSObject {
   }
 
   private func rebuildContentTypeButtons() {
-    for view in contentTypeRailView.arrangedSubviews {
-      contentTypeRailView.removeArrangedSubview(view)
-      view.removeFromSuperview()
-    }
+    contentTypeRailView.removeAllArrangedSubviews()
     contentTypeButtons = []
     let entries: [(String, String, NSColor, ShelfFilter?)] =
       [("All types", "square.grid.2x2", .secondaryLabelColor, nil)]

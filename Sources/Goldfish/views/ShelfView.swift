@@ -804,12 +804,9 @@ final class ShelfView: NSView {
     input.placeholderString = "Clip title"
     input.stringValue = currentTitle
 
-    let alert = NSAlert()
-    alert.messageText = "Rename Clip"
-    alert.informativeText = "Give this clip a searchable title. Leave it blank to clear the title."
+    let alert = NSAlert(
+      title: "Rename Clip", message: "Give this clip a searchable title. Leave it blank to clear the title.", buttons: ["Save", "Cancel"])
     alert.accessoryView = input
-    alert.addButton(withTitle: "Save")
-    alert.addButton(withTitle: "Cancel")
     alert.window.initialFirstResponder = input
 
     presentSheet(alert) { [weak self] response in
@@ -1219,10 +1216,7 @@ final class ShelfView: NSView {
   }
 
   private func exportCollection(named collectionName: String) {
-    let panel = NSSavePanel()
-    panel.title = "Export \(collectionName) Pinboard"
-    ArchivePicker.configure(panel)
-    panel.nameFieldStringValue = ArchivePicker.suggestedName(defaultCollectionArchiveFileName(collectionName))
+    let panel = ArchivePicker.panel(exporting: true, collection: collectionName)
 
     guard let window, window.attachedSheet == nil else { return }
     panel.beginSheetModal(for: window) { [weak self] response in
@@ -1239,14 +1233,6 @@ final class ShelfView: NSView {
       self?.viewModel.deleteCollection(named: collectionName)
       self?.focusSelectedCollectionChip()
     }
-  }
-
-  private func defaultCollectionArchiveFileName(_ collectionName: String) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd-HHmm"
-    let safeName = collectionName.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.joined(separator: "-")
-    let name = safeName.isEmpty ? "Pinboard" : safeName
-    return "Goldfish-\(name)-\(formatter.string(from: Date())).\(HistoryArchive.fileExtension)"
   }
 
   static func makePlainTextEditor(initialText: String = "") -> NSTextView {
@@ -1304,16 +1290,12 @@ final class ShelfView: NSView {
   }
 
   private func confirmDeleteCollection(named collectionName: String, count: Int, completion: @escaping () -> Void) {
-    let alert = NSAlert()
-    alert.alertStyle = .warning
-    alert.messageText = "Delete \(collectionName)?"
     let noun = count == 1 ? "clip" : "clips"
-    alert.informativeText =
-      count > 0
-      ? "This permanently removes \(count) \(noun) in this Pinboard from clipboard history. It cannot be undone."
-      : "This removes the empty Pinboard."
-    alert.addButton(withTitle: "Cancel")
-    alert.addButton(withTitle: "Delete Pinboard")
+    let alert = NSAlert(
+      title: "Delete \(collectionName)?",
+      message: count > 0
+        ? "This permanently removes \(count) \(noun) in this Pinboard from clipboard history. It cannot be undone."
+        : "This removes the empty Pinboard.", buttons: ["Cancel", "Delete Pinboard"])
     alert.buttons[1].hasDestructiveAction = true
     presentSheet(alert) { response in if response == .alertSecondButtonReturn { completion() } }
   }

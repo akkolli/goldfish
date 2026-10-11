@@ -71,3 +71,56 @@ enum ShelfNavigation: Equatable {
     }
   }
 }
+
+/// Resolve the window's shortcut precedence once; responders still own their
+/// editing and navigation behavior. A nil searchText means cards own focus.
+enum ShelfKeyAction: Equatable {
+  case command(ClipCommand)
+  case paste(index: Int, plain: Bool)
+  case destination(ShelfFilter)
+  case navigate(ShelfNavigation)
+  case settings, cancel
+
+  private static let quickPasteKeyCodes: [UInt16: Int] = [18: 0, 19: 1, 20: 2, 21: 3, 23: 4, 22: 5, 26: 6, 28: 7, 25: 8]
+  private static let collectionShortcuts: [UInt16: ShelfFilter] = [
+    18: .mostRecent, 19: .mostUsed, 20: .text, 21: .links, 23: .images, 22: .files, 26: .pinned, 28: .audio, 25: .colors, 29: .code,
+  ]
+
+  static func key(_ code: UInt16, modifiers: NSEvent.ModifierFlags, settingsShortcut: ShortcutBinding, searchText: String?) -> Self? {
+    let flags = modifiers.intersection(.deviceIndependentFlagsMask)
+    if let searchText, code == 49, flags.isEmpty, searchText.clipboardTrimmed.isEmpty { return .command(.preview) }
+    if let index = quickPasteKeyCodes[code], flags == .command || flags == [.command, .shift] {
+      return .paste(index: index, plain: flags.contains(.shift))
+    }
+    if flags == [.command, .option], let mode = collectionShortcuts[code] { return .destination(mode) }
+    if ShortcutManager.virtualKeyCode(for: settingsShortcut.key) == code,
+      flags == NSEvent.ModifierFlags(rawValue: settingsShortcut.modifierFlags).intersection(.deviceIndependentFlagsMask)
+    {
+      return .settings
+    }
+    if flags == .command, let command = ClipCommand.commandKeys[code] {
+      if searchText != nil, [.copy, .undoDelete, .adjacentCollection(-1), .adjacentCollection(1)].contains(command) { return nil }
+      return .command(command)
+    }
+    if flags == .shift, code == 36 { return .command(.pastePlainText) }
+    if flags == [.command, .shift] {
+      if code == 45 { return .command(.createCollection) }
+      if code == 9 { return .command(.pastePlainText) }
+    }
+    guard searchText == nil else { return nil }
+    if flags == .command {
+      if code == 0 { return .navigate(.all) }
+      if code == 126 || code == 125 { return .navigate(.endpoint(last: code == 125, extend: false)) }
+    } else if flags.isEmpty || flags == .shift, let navigation = ShelfNavigation.key(code, extend: flags == .shift) {
+      return .navigate(navigation)
+    }
+    // Preserve native fallback handling after modified shortcuts have had priority.
+    switch code {
+    case 53: return .cancel
+    case 49: return .command(.preview)
+    case 36: return .command(.paste)
+    case 51, 117: return .command(.delete)
+    default: return nil
+    }
+  }
+}

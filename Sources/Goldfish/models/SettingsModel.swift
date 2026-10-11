@@ -66,84 +66,53 @@ final class SettingsModel {
     case captureStatus, collections, status, other
   }
 
-  enum Keys {
-    static let maxHistoryItems = "maxHistoryItems"
-    static let historyRetention = "historyRetentionDays"
-    static let defaultSortMode = "defaultSortMode"
-    static let imageCacheMaxBytes = "imageCacheMaxBytes"
-    static let includeImageTextInSearch = "includeImageTextInSearch"
-    static let pruneDuplicates = "pruneDuplicates"
-    static let launchAtLogin = "launchAtLogin"
-    static let showMenuBarIcon = "showMenuBarIcon"
-    static let goldMenuBarIcon = "goldMenuBarIcon"
-    static let copySoundEnabled = "copySoundEnabled"
-    static let pasteSoundEnabled = "pasteSoundEnabled"
-    static let soundVolume = "soundVolume"
-    static let showDockIcon = "showDockIcon"
-    static let panelSide = "panelSide"
-    static let shelfWidth = "shelfWidth"
-    static let shelfLayout = "shelfLayout"
-    static let largerShelfText = "largerShelfText"
-    static let sortByUsage = "sortByUsage"
-    static let iCloudSyncEnabled = "iCloudSyncEnabled"
-    static let openShortcut = "openShortcut"
-    static let settingsShortcut = "settingsShortcut"
-    static let ignoredApps = "ignoredApps"
-    static let ignoredItemKinds = "ignoredItemKinds"
-    static let pollProfile = "pollProfile"
-    static let keepFirstImage = "keepFirstImage"
-    static let excludeSensitive = "excludeSensitive"
-    static let pauseCapture = "pauseCapture"
-    static let pauseCaptureUntil = "pauseCaptureUntil"
-    static let hideFromScreenCapture = "hideFromScreenCapture"
-    static let clearHistoryOnQuit = "clearHistoryOnQuit"
-    static let onboardingCompleted = "onboardingCompleted"
-    static let accessibilityNoticeShown = "accessibilityNoticeShown"
-    static let customCollectionNames = "customCollectionNames"
-    static let collectionColorHexes = "collectionColorHexes"
-    static let collectionIcons = "collectionIcons"
+  // These raw values are persisted identities, independent of UI labels.
+  enum Keys: String {
+    case maxHistoryItems, defaultSortMode, imageCacheMaxBytes, includeImageTextInSearch, pruneDuplicates, keepFirstImage
+    case launchAtLogin, showMenuBarIcon, goldMenuBarIcon, showDockIcon, copySoundEnabled, pasteSoundEnabled, soundVolume
+    case panelSide, shelfWidth, shelfLayout, largerShelfText, sortByUsage, iCloudSyncEnabled, openShortcut, settingsShortcut
+    case ignoredApps, ignoredItemKinds, pollProfile, excludeSensitive, pauseCapture, pauseCaptureUntil, hideFromScreenCapture
+    case clearHistoryOnQuit, onboardingCompleted, accessibilityNoticeShown, customCollectionNames, collectionColorHexes, collectionIcons
+    case historyRetention = "historyRetentionDays"
   }
 
   @Preference(
-    .maxHistoryItems, AppConfig.defaultHistoryLength, key: Keys.maxHistoryItems, read: { ($0 as? Int).flatMap { $0 > 0 ? $0 : nil } },
+    .maxHistoryItems, AppConfig.defaultHistoryLength, key: .maxHistoryItems, read: { ($0 as? Int).flatMap { $0 > 0 ? $0 : nil } },
     normalize: SettingsModel.clampedMaxHistoryItems) var maxHistoryItems: Int
-  @Preference(.historyRetention, raw: .oneMonth, key: Keys.historyRetention) var historyRetention: HistoryRetention
-  @Preference(.defaultSortMode, raw: .mostRecent, key: Keys.defaultSortMode) var defaultSortMode: ShelfFilter
+  @Preference(.historyRetention, raw: .oneMonth, key: .historyRetention) var historyRetention: HistoryRetention
+  @Preference(.defaultSortMode, raw: .mostRecent, key: .defaultSortMode) var defaultSortMode: ShelfFilter
   @Preference(
-    .imageCacheMaxBytes, AppConfig.defaultCacheMaxBytes, key: Keys.imageCacheMaxBytes,
-    read: { ($0 as? Int64).flatMap { $0 > 0 ? $0 : nil } }, normalize: SettingsModel.clampedImageCacheMaxBytes) var imageCacheMaxBytes:
-    Int64
-  @Preference(.includeImageTextInSearch, false, key: Keys.includeImageTextInSearch) var includeImageTextInSearch: Bool
-  @Preference(.pruneDuplicates, true, key: Keys.pruneDuplicates) var pruneDuplicates: Bool
-  @Preference(.launchAtLogin, false, key: Keys.launchAtLogin) var launchAtLogin: Bool
-  @Preference(.showMenuBarIcon, true, key: Keys.showMenuBarIcon) var showMenuBarIcon: Bool
-  @Preference(.goldMenuBarIcon, false, key: Keys.goldMenuBarIcon) var goldMenuBarIcon: Bool
-  @Preference(.soundEffects, false, key: Keys.copySoundEnabled) var copySoundEnabled: Bool
-  @Preference(.soundEffects, false, key: Keys.pasteSoundEnabled) var pasteSoundEnabled: Bool
-  @Preference(.soundEffects, 0.30, key: Keys.soundVolume, normalize: SettingsModel.clampedSoundVolume) var soundVolume: Double
-  @Preference(.showDockIcon, false, key: Keys.showDockIcon) var showDockIcon: Bool
-  @Preference(.panelSide, raw: .right, key: Keys.panelSide) var panelSide: ShelfSide
-  @Preference(.other, raw: .standard, key: Keys.shelfWidth) var shelfWidth: ShelfWidth
-  @Preference(.other, raw: .sidebar, key: Keys.shelfLayout) var shelfLayout: ShelfLayout
-  @Preference(.other, false, key: Keys.largerShelfText) var largerShelfText: Bool
-  @Preference(.other, false, key: Keys.sortByUsage) var sortByUsage: Bool
-  @Preference(.cloudSync, false, key: Keys.iCloudSyncEnabled) var iCloudSyncEnabled: Bool
-  @Preference(.openShortcut, shortcut: AppConfig.defaultOpenShortcut, key: Keys.openShortcut) var openShortcut: ShortcutBinding
-  @Preference(.settingsShortcut, shortcut: AppConfig.defaultSettingsShortcut, key: Keys.settingsShortcut) var settingsShortcut:
-    ShortcutBinding
-  @Preference(.ignoredApps, AppConfig.defaultIgnoredApps, key: Keys.ignoredApps) var ignoredApps: [String]
-  @Preference(.ignoredItemKinds, [], key: Keys.ignoredItemKinds, normalize: SettingsModel.normalizedIgnoredItemKinds)
-  var ignoredItemKindsRaw: [Int]
-  @Preference(.pollProfile, raw: AppConfig.defaultPollProfile, key: Keys.pollProfile) var pollProfileRaw: AppConfig.PollProfile
-  @Preference(.keepFirstImage, true, key: Keys.keepFirstImage) var keepFirstImage: Bool
-  @Preference(.excludeSensitive, true, key: Keys.excludeSensitive) var excludeSensitive: Bool
-  @Preference(.pauseCapture, false, key: Keys.pauseCapture) var pauseCapture: Bool
+    .imageCacheMaxBytes, AppConfig.defaultCacheMaxBytes, key: .imageCacheMaxBytes, read: { ($0 as? Int64).flatMap { $0 > 0 ? $0 : nil } },
+    normalize: SettingsModel.clampedImageCacheMaxBytes) var imageCacheMaxBytes: Int64
+  @Preference(.includeImageTextInSearch, false, key: .includeImageTextInSearch) var includeImageTextInSearch: Bool
+  @Preference(.pruneDuplicates, true, key: .pruneDuplicates) var pruneDuplicates: Bool
+  @Preference(.launchAtLogin, false, key: .launchAtLogin) var launchAtLogin: Bool
+  @Preference(.showMenuBarIcon, true, key: .showMenuBarIcon) var showMenuBarIcon: Bool
+  @Preference(.goldMenuBarIcon, false, key: .goldMenuBarIcon) var goldMenuBarIcon: Bool
+  @Preference(.soundEffects, false, key: .copySoundEnabled) var copySoundEnabled: Bool
+  @Preference(.soundEffects, false, key: .pasteSoundEnabled) var pasteSoundEnabled: Bool
+  @Preference(.soundEffects, 0.30, key: .soundVolume, normalize: SettingsModel.clampedSoundVolume) var soundVolume: Double
+  @Preference(.showDockIcon, false, key: .showDockIcon) var showDockIcon: Bool
+  @Preference(.panelSide, raw: .right, key: .panelSide) var panelSide: ShelfSide
+  @Preference(.other, raw: .standard, key: .shelfWidth) var shelfWidth: ShelfWidth
+  @Preference(.other, raw: .sidebar, key: .shelfLayout) var shelfLayout: ShelfLayout
+  @Preference(.other, false, key: .largerShelfText) var largerShelfText: Bool
+  @Preference(.other, false, key: .sortByUsage) var sortByUsage: Bool
+  @Preference(.cloudSync, false, key: .iCloudSyncEnabled) var iCloudSyncEnabled: Bool
+  @Preference(.openShortcut, shortcut: AppConfig.defaultOpenShortcut, key: .openShortcut) var openShortcut: ShortcutBinding
+  @Preference(.settingsShortcut, shortcut: AppConfig.defaultSettingsShortcut, key: .settingsShortcut) var settingsShortcut: ShortcutBinding
+  @Preference(.ignoredApps, AppConfig.defaultIgnoredApps, key: .ignoredApps) var ignoredApps: [String]
+  @Preference(.ignoredItemKinds, [], key: .ignoredItemKinds, normalize: SettingsModel.normalizedIgnoredItemKinds) var ignoredItemKindsRaw:
+    [Int]
+  @Preference(.pollProfile, raw: AppConfig.defaultPollProfile, key: .pollProfile) var pollProfileRaw: AppConfig.PollProfile
+  @Preference(.keepFirstImage, true, key: .keepFirstImage) var keepFirstImage: Bool
+  @Preference(.excludeSensitive, true, key: .excludeSensitive) var excludeSensitive: Bool
+  @Preference(.pauseCapture, false, key: .pauseCapture) var pauseCapture: Bool
   @Preference(
-    .pauseCapture, nil, key: Keys.pauseCaptureUntil,
-    read: { ($0 as? TimeInterval).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil } }, encode: { $0?.timeIntervalSince1970 })
-  var pauseCaptureUntil: Date?
-  @Preference(.hideFromScreenCapture, false, key: Keys.hideFromScreenCapture) var hideFromScreenCapture: Bool
-  @Preference(.clearHistoryOnQuit, false, key: Keys.clearHistoryOnQuit) var clearHistoryOnQuit: Bool
+    .pauseCapture, nil, key: .pauseCaptureUntil, read: { ($0 as? TimeInterval).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil } },
+    encode: { $0?.timeIntervalSince1970 }) var pauseCaptureUntil: Date?
+  @Preference(.hideFromScreenCapture, false, key: .hideFromScreenCapture) var hideFromScreenCapture: Bool
+  @Preference(.clearHistoryOnQuit, false, key: .clearHistoryOnQuit) var clearHistoryOnQuit: Bool
 
   static func clampedSoundVolume(_ value: Double) -> Double { value.isFinite ? min(1, max(0, value)) : 0.30 }
   private(set) var customCollectionNames: [String]
@@ -158,14 +127,17 @@ final class SettingsModel {
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
-    let existingProfile = [Keys.maxHistoryItems, Keys.historyRetention, Keys.openShortcut].contains { defaults.object(forKey: $0) != nil }
-    let savedUsageSort = defaults.object(forKey: Keys.sortByUsage) as? Bool
-    customCollectionNames = Self.normalizedCollectionNames(defaults.stringArray(forKey: Keys.customCollectionNames) ?? [])
+    let existingProfile = [Keys.maxHistoryItems.rawValue, Keys.historyRetention.rawValue, Keys.openShortcut.rawValue].contains {
+      defaults.object(forKey: $0) != nil
+    }
+    let savedUsageSort = defaults.object(forKey: Keys.sortByUsage.rawValue) as? Bool
+    customCollectionNames = Self.normalizedCollectionNames(defaults.stringArray(forKey: Keys.customCollectionNames.rawValue) ?? [])
     collectionColorHexes = Self.normalizedMetadata(
-      defaults.dictionary(forKey: Keys.collectionColorHexes), normalize: Self.normalizedHexColor)
-    collectionIcons = Self.normalizedMetadata(defaults.dictionary(forKey: Keys.collectionIcons), normalize: PinboardIcon.normalized)
-    onboardingCompleted = defaults.object(forKey: Keys.onboardingCompleted) as? Bool ?? existingProfile
-    accessibilityNoticeShown = defaults.object(forKey: Keys.accessibilityNoticeShown) as? Bool ?? false
+      defaults.dictionary(forKey: Keys.collectionColorHexes.rawValue), normalize: Self.normalizedHexColor)
+    collectionIcons = Self.normalizedMetadata(
+      defaults.dictionary(forKey: Keys.collectionIcons.rawValue), normalize: PinboardIcon.normalized)
+    onboardingCompleted = defaults.object(forKey: Keys.onboardingCompleted.rawValue) as? Bool ?? existingProfile
+    accessibilityNoticeShown = defaults.object(forKey: Keys.accessibilityNoticeShown.rawValue) as? Bool ?? false
     let preferences: [any PreferenceLoading] = [
       _maxHistoryItems, _historyRetention, _defaultSortMode, _imageCacheMaxBytes, _includeImageTextInSearch, _pruneDuplicates,
       _launchAtLogin, _showMenuBarIcon, _goldMenuBarIcon, _copySoundEnabled, _pasteSoundEnabled, _soundVolume, _showDockIcon, _panelSide,
@@ -185,10 +157,10 @@ final class SettingsModel {
   }
 
   private func store() {
-    defaults.set(customCollectionNames, forKey: Keys.customCollectionNames)
-    defaults.set(collectionColorHexes, forKey: Keys.collectionColorHexes)
-    defaults.set(collectionIcons, forKey: Keys.collectionIcons)
-    defaults.set(onboardingCompleted, forKey: Keys.onboardingCompleted)
+    defaults.set(customCollectionNames, forKey: Keys.customCollectionNames.rawValue)
+    defaults.set(collectionColorHexes, forKey: Keys.collectionColorHexes.rawValue)
+    defaults.set(collectionIcons, forKey: Keys.collectionIcons.rawValue)
+    defaults.set(onboardingCompleted, forKey: Keys.onboardingCompleted.rawValue)
   }
 
   func observe(_ observer: @escaping (Change) -> Void) { observers.append(observer) }
@@ -211,13 +183,13 @@ final class SettingsModel {
   func markAccessibilityNoticeShown() {
     guard !accessibilityNoticeShown else { return }
     accessibilityNoticeShown = true
-    defaults.set(true, forKey: Keys.accessibilityNoticeShown)
+    defaults.set(true, forKey: Keys.accessibilityNoticeShown.rawValue)
   }
 
   func markOnboardingCompleted() {
     guard !onboardingCompleted else { return }
     onboardingCompleted = true
-    defaults.set(true, forKey: Keys.onboardingCompleted)
+    defaults.set(true, forKey: Keys.onboardingCompleted.rawValue)
     notify(.other)
   }
 
@@ -341,13 +313,9 @@ final class SettingsModel {
   }
 
   private static func normalizedCollectionNames(_ names: [String]) -> [String] {
-    var normalized: [String] = []
-    for name in names {
-      guard let value = PinboardNames.normalizedName(name) else { continue }
-      guard !normalized.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) else { continue }
-      normalized.append(value)
+    names.compactMap(PinboardNames.normalizedName).reduce(into: []) { result, name in
+      if !result.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) { result.append(name) }
     }
-    return normalized
   }
 
   private static let userVisibleItemKindRawValues: Set<Int> = [
@@ -397,22 +365,23 @@ protocol PreferenceLoading: AnyObject {
   let normalize: (Value) -> Value
 
   init(
-    _ change: SettingsModel.Change, _ initial: Value, key: String, read: @escaping (Any?) -> Value? = { $0 as? Value },
+    _ change: SettingsModel.Change, _ initial: Value, key: SettingsModel.Keys, read: @escaping (Any?) -> Value? = { $0 as? Value },
     encode: @escaping (Value) -> Any? = { $0 }, normalize: @escaping (Value) -> Value = { $0 }
   ) {
     value = initial
     self.change = change
-    self.key = key
+    self.key = key.rawValue
     self.read = read
     self.encode = encode
     self.normalize = normalize
   }
 
-  convenience init(_ change: SettingsModel.Change, raw initial: Value, key: String) where Value: RawRepresentable, Value.RawValue == Int {
+  convenience init(_ change: SettingsModel.Change, raw initial: Value, key: SettingsModel.Keys)
+  where Value: RawRepresentable, Value.RawValue == Int {
     self.init(change, initial, key: key, read: { ($0 as? Int).flatMap(Value.init(rawValue:)) }, encode: { $0.rawValue })
   }
 
-  convenience init(_ change: SettingsModel.Change, shortcut initial: Value, key: String) where Value == ShortcutBinding {
+  convenience init(_ change: SettingsModel.Change, shortcut initial: Value, key: SettingsModel.Keys) where Value == ShortcutBinding {
     self.init(change, initial, key: key, read: { ($0 as? String).flatMap(ShortcutBinding.init(encoded:)) }, encode: { $0.encoded() })
   }
 

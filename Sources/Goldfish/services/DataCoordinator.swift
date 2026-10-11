@@ -14,12 +14,12 @@ final class DataCoordinator {
   private var backupEnabled = false
 
   func setBackupEnabled(_ enabled: Bool) {
-    lock.lock()
-    if backupEnabled != enabled {
-      generation += 1
-      backupEnabled = enabled
+    lock.withLock {
+      if backupEnabled != enabled {
+        generation += 1
+        backupEnabled = enabled
+      }
     }
-    lock.unlock()
   }
 
   func cancel() {
@@ -35,9 +35,7 @@ final class DataCoordinator {
   }
 
   func backupOperation<Value>(_ work: @escaping (ArchiveWrite) throws -> Value) -> () -> Result<Value, Error> {
-    lock.lock()
-    let token = generation
-    lock.unlock()
+    let token = lock.withLock { generation }
     return { [self] in
       Result {
         try authorize(token) {}
@@ -47,9 +45,9 @@ final class DataCoordinator {
   }
 
   private func authorize(_ token: Int, _ write: () throws -> Void) throws {
-    lock.lock()
-    defer { lock.unlock() }
-    guard backupEnabled, token == generation else { throw CloudBackupError.cancelled }
-    try write()
+    try lock.withLock {
+      guard backupEnabled, token == generation else { throw CloudBackupError.cancelled }
+      try write()
+    }
   }
 }

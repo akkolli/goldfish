@@ -42,6 +42,25 @@ enum NativeUI {
 
 }
 
+extension NSAlert {
+  convenience init(title: String, message: String, style: Style = .warning, buttons: [String]) {
+    self.init()
+    messageText = title
+    informativeText = message
+    alertStyle = style
+    buttons.forEach { addButton(withTitle: $0) }
+  }
+}
+
+extension NSStackView {
+  func removeAllArrangedSubviews() {
+    for view in arrangedSubviews {
+      removeArrangedSubview(view)
+      view.removeFromSuperview()
+    }
+  }
+}
+
 extension NSScrollView {
   /// Shared setup keeps scroll policy beside the document without replacing
   /// native scrollers, responders, or subclass layout and event handling.

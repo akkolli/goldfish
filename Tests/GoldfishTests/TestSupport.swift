@@ -21,7 +21,7 @@ class IsolatedTestCase: XCTestCase {
     let suite = "GoldfishTests.\(UUID())"
     suiteNames.append(suite)
     let defaults = UserDefaults(suiteName: suite)!
-    if let retention { defaults.set(retention.rawValue, forKey: SettingsModel.Keys.historyRetention) }
+    if let retention { defaults.set(retention.rawValue, forKey: SettingsModel.Keys.historyRetention.rawValue) }
     return defaults
   }
 

@@ -365,16 +365,8 @@ final class CardView: NSView, NSDraggingSource {
   }
 
   private func availableCollectionNames() -> [String] {
-    var names: [String] = []
     var seen = Set<String>()
-    for candidate in configuration.collectionNames {
-      guard let name = PinboardNames.normalizedName(candidate) else { continue }
-      let key = name.lowercased()
-      guard !seen.contains(key) else { continue }
-      seen.insert(key)
-      names.append(name)
-    }
-    return names
+    return configuration.collectionNames.compactMap(PinboardNames.normalizedName).filter { seen.insert($0.lowercased()).inserted }
   }
 
   @discardableResult private func addMenuItem(_ title: String, command: ClipCommand, to menu: NSMenu) -> NSMenuItem {
