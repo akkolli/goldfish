@@ -45,7 +45,8 @@ final class ClipboardTextStatisticsTests: XCTestCase {
   }
 
   private func item(_ text: String, kind: ClipboardItemKind = .text) -> ClipboardItem {
-    ClipboardItem(id: UUID(), kind: kind, displayText: text, payload: text, payloadHash: UUID().uuidString,
-      createdAt: Date(), lastUsedAt: Date(), useCount: 0, sourceApp: "Notes", imagePath: nil, thumbnailPath: nil)
+    testItem(
+      kind: kind, payload: text, payloadHash: UUID().uuidString, createdAt: Date(), lastUsedAt: Date(),
+      useCount: 0, sourceApp: "Notes")
   }
 }

@@ -222,10 +222,7 @@ final class ClipboardStore {
     for removal in removals { cacheService.removeCachedReferences(removal.item, preserving: paths) }
   }
 
-  @discardableResult func removeAll() -> Bool {
-    guard commitItems([], clearAll: true) else { return false }
-    return true
-  }
+  @discardableResult func removeAll() -> Bool { commitItems([], clearAll: true) }
 
   func updateHistoryLimit(_ newLimit: Int) {
     if settings.maxHistoryItems != newLimit { settings.maxHistoryItems = newLimit }
@@ -243,7 +240,7 @@ final class ClipboardStore {
 
   private func commitItems(_ proposed: [ClipboardItem], purgeRemoved: Bool = true, clearAll: Bool = false) -> Bool {
     guard canPersistHistory else { return reportPersistenceFailure(savingUnavailableMessage) }
-    let kept = retentionPlan(for: proposed).kept
+    let kept = retainedItems(from: proposed)
     let oldByID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
     let keptIDs = Set(kept.map(\.id))
     let changed = kept.filter { oldByID[$0.id] != $0 }
@@ -341,37 +338,24 @@ final class ClipboardStore {
     return archiveImport.summary
   }
 
-  private func retentionPlan(for sourceItems: [ClipboardItem]) -> (kept: [ClipboardItem], overflow: [ClipboardItem]) {
+  private func retainedItems(from sourceItems: [ClipboardItem]) -> [ClipboardItem] {
     var pinnedCount = 0
     var unpinnedCount = 0
-    var kept: [ClipboardItem] = []
-    var overflow: [ClipboardItem] = []
     let retentionCutoff = settings.historyRetention.cutoffDate()
-
-    kept.reserveCapacity(sourceItems.count)
-    for item in sourceItems {
+    return sourceItems.filter { item in
       if item.isPinned {
         if pinnedCount < AppConfiguration.maxPinnedItems {
           pinnedCount += 1
-          kept.append(item)
-        } else if isCollectionRetained(item) {
-          kept.append(item)
-        } else {
-          overflow.append(item)
+          return true
         }
-      } else if isCollectionRetained(item) {
-        kept.append(item)
-      } else if isExpiredByRetention(item, cutoff: retentionCutoff) {
-        overflow.append(item)
-      } else if unpinnedCount < settings.maxHistoryItems {
-        unpinnedCount += 1
-        kept.append(item)
-      } else {
-        overflow.append(item)
+        return isCollectionRetained(item)
       }
+      if isCollectionRetained(item) { return true }
+      if isExpiredByRetention(item, cutoff: retentionCutoff) { return false }
+      guard unpinnedCount < settings.maxHistoryItems else { return false }
+      unpinnedCount += 1
+      return true
     }
-
-    return (kept, overflow)
   }
 
   private func historySort(_ lhs: ClipboardItem, _ rhs: ClipboardItem) -> Bool {
@@ -495,7 +479,7 @@ final class ClipboardStore {
 
     if let decoded = decodeLegacyJSONItems(from: data) {
       items = decoded
-      items = retentionPlan(for: decoded).kept
+      items = retainedItems(from: decoded)
       if saveAll(items) {
         try? FileManager.default.removeItem(at: historyURL)
         hardenStoragePermissions()

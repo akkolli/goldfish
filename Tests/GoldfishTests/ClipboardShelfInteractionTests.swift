@@ -7,7 +7,6 @@ import XCTest
 final class ClipboardShelfInteractionTests: ClipboardTestCase {
   private var directory: URL!
   private var defaults: UserDefaults!
-  private var suite: String!
   private var settings: SettingsModel!
   private var cache: ClipboardCacheService!
   private var store: ClipboardStore!
@@ -15,13 +14,12 @@ final class ClipboardShelfInteractionTests: ClipboardTestCase {
 
   override func setUpWithError() throws {
     _ = NSApplication.shared
-    suite = "Goldfish.InteractionTests.\(UUID().uuidString)"
-    defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-    directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+    defaults = makeTestDefaults()
+    directory = try makeTempDirectory()
     settings = SettingsModel(defaults: defaults)
     settings.shelfLayout = .sidebar
     settings.historyRetention = .forever
-    let encryption = ClipboardEncryptionService(keyProvider: { SymmetricKey(data: Data(repeating: 0x39, count: 32)) })
+    let encryption = testEncryption(byte: 57)
     cache = ClipboardCacheService(baseURL: directory, encryptionService: encryption)
     store = ClipboardStore(settings: settings, cacheService: cache, baseURL: directory, encryptionService: encryption)
     model = ClipboardPanelViewModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
@@ -33,8 +31,7 @@ final class ClipboardShelfInteractionTests: ClipboardTestCase {
     cache.flushForTesting()
     store = nil
     cache = nil
-    defaults.removePersistentDomain(forName: suite)
-    try? FileManager.default.removeItem(at: directory)
+    try super.tearDownWithError()
   }
 
   func testDirectSymbolTypesStayInsideThePinboardAndSearch() throws {
@@ -412,9 +409,9 @@ final class ClipboardShelfInteractionTests: ClipboardTestCase {
   }
   private func item(_ text: String, kind: ClipboardItemKind, collection: String? = nil) -> ClipboardItem {
     let now = Date()
-    return ClipboardItem(
-      id: UUID(), kind: kind, displayText: text, payload: text, payloadHash: UUID().uuidString, createdAt: now, lastUsedAt: now,
-      useCount: 0, sourceApp: "Design \"Notes\"", imagePath: nil, thumbnailPath: nil, collectionName: collection)
+    return testItem(
+      kind: kind, payload: text, payloadHash: UUID().uuidString, createdAt: now, useCount: 0,
+      sourceApp: "Design \"Notes\"", collectionName: collection)
   }
   private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
   private func button(_ label: String, in view: NSView) throws -> ShelfFilterButton {

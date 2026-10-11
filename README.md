@@ -89,7 +89,7 @@ swift test -q
 python3 scripts/project-metrics.py
 ```
 
-[Architecture and component ownership](docs/ARCHITECTURE.md) describes where each responsibility lives. The metrics script reports app/test Swift separately and excludes generated output from project size.
+[Architecture and component ownership](docs/ARCHITECTURE.md) describes where each responsibility lives. The metrics script counts all maintained text, including tests, documentation, scripts, configuration, and text assets. It also reports app/test Swift separately and binary asset sizes. Generated output is excluded. Use `--max-lines 9999` to enforce the under-10,000-line target.
 
 For app-level behavior that cannot be fully covered by unit tests, run [docs/SMOKE_TEST.md](docs/SMOKE_TEST.md). For distribution builds, see [docs/RELEASE.md](docs/RELEASE.md).
 

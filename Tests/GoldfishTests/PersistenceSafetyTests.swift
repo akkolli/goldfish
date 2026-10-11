@@ -166,9 +166,7 @@ final class PersistenceSafetyTests: XCTestCase {
     ClipboardStore(settings: settings, cacheService: cache, baseURL: root, encryptionService: encryption)
   }
   private func item(_ text: String, kind: ClipboardItemKind = .text, imagePath: String? = nil) -> ClipboardItem {
-    ClipboardItem(
-      id: UUID(), kind: kind, displayText: text, payload: text, payloadHash: text, createdAt: Date(), lastUsedAt: Date(), useCount: 0,
-      sourceApp: nil, imagePath: imagePath, thumbnailPath: nil)
+    testItem(kind: kind, payload: text, createdAt: Date(), lastUsedAt: Date(), useCount: 0, imagePath: imagePath)
   }
   private func sql(_ statement: String) throws {
     var db: OpaquePointer?

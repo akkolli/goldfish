@@ -25,3 +25,12 @@ enum ClipboardCardCommand: Equatable {
   case undoDelete
   case assignToCollection(String?)
 }
+
+/// Navigation is independent of clipboard actions and pointer selection.
+enum ClipboardCardNavigation {
+  case move(Int, extend: Bool)
+  case page(Int, extend: Bool)
+  case vertical(Int, extend: Bool)
+  case endpoint(last: Bool, extend: Bool)
+  case all
+}

@@ -786,25 +786,7 @@ final class ClipboardPanelView: NSView {
       self?.viewModel.selectItem(at: selected, mode: mode)
     }
     card.onStartSearch = { [weak self] text in self?.startSearchFromShelf(text) }
-    card.onMoveSelection = { [weak self] delta in self?.moveSelectionFromFocusedCard(delta) }
-    card.onExtendSelection = { [weak self] delta in self?.extendSelectionFromFocusedCard(delta) }
-    card.onVerticalNavigation = { [weak self] direction, extend in self?.navigateVerticalRow(direction, extend: extend) }
-    card.onPageSelection = { [weak self] direction in
-      guard let self else { return }
-      self.moveSelectionFromFocusedCard(direction * self.visibleCardPageStep)
-    }
-    card.onPageExtendSelection = { [weak self] direction in
-      guard let self else { return }
-      self.extendSelectionFromFocusedCard(direction * self.visibleCardPageStep)
-    }
-    card.onSelectFirst = { [weak self] in self?.selectFirstCardFromFocusedCard() }
-    card.onSelectLast = { [weak self] in self?.selectLastCardFromFocusedCard() }
-    card.onExtendSelectionToFirst = { [weak self] in self?.extendSelectionToFirstCardFromFocusedCard() }
-    card.onExtendSelectionToLast = { [weak self] in self?.extendSelectionToLastCardFromFocusedCard() }
-    card.onSelectAll = { [weak self] in
-      self?.viewModel.selectAllVisibleItems()
-      self?.focusSelectedCard()
-    }
+    card.onNavigate = { [weak self] in self?.navigateFromFocusedCard($0) }
     card.onPasteboardWriters = { [weak self] selected in self?.viewModel.pasteboardWriters(forItemAt: selected) ?? [] }
     card.onCommand = { [weak self, weak card] command in
       guard let self, let card else { return }
@@ -1325,30 +1307,28 @@ final class ClipboardPanelView: NSView {
     focusSelectedCard()
   }
 
-  private func selectFirstCardFromFocusedCard() {
-    keyboardColumnX = nil
-    claimKeyboardCardSelection()
-    viewModel.selectFirstItem()
-    focusSelectedCard()
-  }
-
-  private func selectLastCardFromFocusedCard() {
-    keyboardColumnX = nil
-    claimKeyboardCardSelection()
-    viewModel.selectLastItem()
-    focusSelectedCard()
-  }
-
-  private func extendSelectionToFirstCardFromFocusedCard() {
-    claimKeyboardCardSelection()
-    viewModel.selectItem(at: 0, mode: .range)
-    focusSelectedCard()
-  }
-
-  private func extendSelectionToLastCardFromFocusedCard() {
-    claimKeyboardCardSelection()
-    viewModel.selectItem(at: viewModel.visibleItems.count - 1, mode: .range)
-    focusSelectedCard()
+  private func navigateFromFocusedCard(_ action: ClipboardCardNavigation) {
+    switch action {
+    case .move(let delta, let extend), .page(let delta, let extend):
+      let step: Int
+      if case .page = action { step = delta * visibleCardPageStep } else { step = delta }
+      if extend { extendSelectionFromFocusedCard(step) } else { moveSelectionFromFocusedCard(step) }
+    case .vertical(let direction, let extend): navigateVerticalRow(direction, extend: extend)
+    case .endpoint(let last, let extend):
+      if !extend { keyboardColumnX = nil }
+      claimKeyboardCardSelection()
+      if extend {
+        viewModel.selectItem(at: last ? viewModel.visibleItems.count - 1 : 0, mode: .range)
+      } else if last {
+        viewModel.selectLastItem()
+      } else {
+        viewModel.selectFirstItem()
+      }
+      focusSelectedCard()
+    case .all:
+      viewModel.selectAllVisibleItems()
+      focusSelectedCard()
+    }
   }
 
   private func claimKeyboardCardSelection() {

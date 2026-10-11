@@ -6,20 +6,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     static let minimumWindowSize = NSSize(width: 740, height: 460)
     static let settingsLabelWidth: CGFloat = 128
   }
-  private enum ControlCommand: Int {
-    case historyLength, defaultSort
-    case launchAtLogin, showMenuBarIcon, showDockIcon
-    case soundVolume, previewCopySound, previewPasteSound
-    case pauseCapture
-    case requestAccessibility, refreshAccessibility
-    case cacheLimit
-    case iCloudSync, pushICloudArchive, pullICloudArchive, revealICloudFile
-    case openHistoryFolder, exportArchive, importArchive, clearHistory, clearCache
-  }
   private static let tabTitles = ["General", "Shortcuts", "Capture", "Privacy", "Performance", "Data"]
   private static let allowedContentTypesValidationMessage = "At least one content type must stay enabled."
   private static let allowedContentTypesUpdatedMessage = "Allowed content types updated."
-
   private let settings: SettingsModel
   private let store: ClipboardStore
   private let cacheService: ClipboardCacheService
@@ -33,55 +22,21 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   private var selectedTabIndex = 0
   private var sectionButtons: [NSButton] = []
   private var controlBindings: [SettingsControlBinding] = []
-
-  private let historyLabel = NSTextField(labelWithString: "")
-  private let historyStepper = NSStepper()
-  private let historyRetentionPopup = NSPopUpButton()
-  private let pruneDuplicatesButton = NSButton()
-  private let keepFirstImageButton = NSButton()
-  private let defaultSortPopup = NSPopUpButton()
-  private let launchAtLoginButton = NSButton()
-  private let showMenuBarIconButton = NSButton()
-  private let goldMenuBarIconButton = NSButton()
-  private let showDockIconButton = NSButton()
-  private let panelSidePopup = NSPopUpButton()
-  private let shelfLayoutPopup = NSPopUpButton()
-  private var shelfSideRow: NSView?
-  private let shelfWidthPopup = NSPopUpButton()
-  private let largerShelfTextButton = NSButton()
-  private let copySoundButton = NSButton()
-  private let pasteSoundButton = NSButton()
-  private let copySoundPreview = ShelfNavigationButton()
-  private let pasteSoundPreview = ShelfNavigationButton()
-  private let soundVolumeSlider = NSSlider()
-  private let soundVolumeLabel = NSTextField(labelWithString: "")
   private var shortcutRecorders: [Int: ShortcutRecorderButton] = [:]
-  private let launchStatusLabel = NSTextField(labelWithString: "")
-
-  private let shortcutStatusLabel = NSTextField(labelWithString: "")
-
-  private let pauseCaptureButton = NSButton()
-  private let captureStatusLabel = NSTextField(labelWithString: "")
-  private let excludeSensitiveButton = NSButton()
-  private let includeImageTextButton = NSButton()
+  private var keepFirstImageButton: NSButton!
+  private var goldMenuBarIconButton: NSButton!
+  private var shelfSideRow: NSView?
+  private var soundPreviews: [NSButton] = []
+  private var cloudActions: [NSButton] = []
+  private var archiveActions: [NSButton] = []
   private var allowedKindButtons: [(ClipboardItemKind, NSButton)] = []
-
-  private let clearHistoryOnQuitButton = NSButton()
-  private let hideFromScreenCaptureButton = NSButton()
+  private let launchStatusLabel = NSTextField(labelWithString: "")
+  private let shortcutStatusLabel = NSTextField(labelWithString: "")
+  private let captureStatusLabel = NSTextField(labelWithString: "")
   private let accessibilityStatusLabel = NSTextField(labelWithString: "")
   private let pasteStatusLabel = NSTextField(labelWithString: "")
-
-  private let pollProfilePopup = NSPopUpButton()
-  private let cacheSlider = NSSlider()
-  private let cacheLabel = NSTextField(labelWithString: "")
   private let dataStatusLabel = NSTextField(labelWithString: "")
-  private let iCloudSyncButton = NSButton()
-  private let iCloudSyncNowButton = NSButton()
-  private let iCloudRestoreButton = NSButton()
-  private let iCloudRevealButton = NSButton()
   private let cloudSyncStatusLabel = NSTextField(labelWithString: "")
-  private let exportArchiveButton = NSButton()
-  private let importArchiveButton = NSButton()
 
   init(
     settings: SettingsModel, store: ClipboardStore, cacheService: ClipboardCacheService,
@@ -93,14 +48,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     self.cacheService = cacheService
     self.cloudSyncService = cloudSyncService
     self.dataCoordinator = dataCoordinator
-    dataCoordinator.setBackupEnabled(settings.iCloudSyncEnabled)
     self.previewSound = previewSound
+    dataCoordinator.setBackupEnabled(settings.iCloudSyncEnabled)
     super.init()
-
-    let windowRect = NSRect(origin: .zero, size: Metrics.windowSize)
     let window = NSWindow(
-      contentRect: windowRect, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered,
-      defer: false)
+      contentRect: NSRect(origin: .zero, size: Metrics.windowSize),
+      styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     window.title = "Goldfish Settings — " + AppConfiguration.buildDescription
     window.backgroundColor = ClipboardShelfStyle.windowBackground
     window.titlebarAppearsTransparent = true
@@ -111,7 +64,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     window.delegate = self
     window.center()
     self.window = window
-    settings.observe { [weak self] change in DispatchQueue.main.async { self?.refreshFromSettings(for: change) } }
+    settings.observe { [weak self] change in
+      DispatchQueue.main.async {
+        guard let self else { return }
+        if change == .captureStatus { self.setCaptureStatusLabel(self.settings.captureStatusMessage) }
+        else { self.refreshFromSettings() }
+      }
+    }
     refreshFromSettings(refreshCloudSyncStatus: true)
     fitSelectedTab(animated: false)
   }
@@ -125,7 +84,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   }
 
   func windowWillClose(_ notification: Notification) { commitPendingEditorDrafts() }
-
   private func makeContentView() -> NSView {
     tabView.translatesAutoresizingMaskIntoConstraints = false
     tabView.tabViewType = .noTabsNoBorder
@@ -136,6 +94,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     tabView.addTabViewItem(tab("Performance", performanceSettingsView()))
     tabView.addTabViewItem(tab("Data", dataSettingsView()))
 
+    [launchStatusLabel, shortcutStatusLabel, captureStatusLabel, accessibilityStatusLabel,
+      pasteStatusLabel, dataStatusLabel, cloudSyncStatusLabel].forEach(configureStatusLabel)
     let sidebar = NSVisualEffectView()
     sidebar.material = .sidebar
     sidebar.blendingMode = .behindWindow
@@ -235,106 +195,222 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   }
 
   private func generalSettingsView() -> NSView {
-    historyStepper.minValue = Double(AppConfiguration.minHistoryLength)
-    historyStepper.maxValue = Double(AppConfiguration.maxHistoryLength)
-    historyStepper.increment = 25
-    bind(historyStepper, to: .historyLength)
-    historyStepper.setAccessibilityLabel("History length")
-    configurePopup(
-      historyRetentionPopup, setting: \.historyRetention, change: .historyRetention, values: HistoryRetention.allCases, title: { $0.title })
-    historyRetentionPopup.setAccessibilityLabel("Keep history")
-
-    configureCheckbox(pruneDuplicatesButton, title: "Ignore duplicate items", setting: \.pruneDuplicates, change: .pruneDuplicates)
-    configureCheckbox(
-      keepFirstImageButton, title: "Reuse the original image for duplicate copies", setting: \.keepFirstImage, change: .keepFirstImage)
-    keepFirstImageButton.toolTip =
-      "When duplicate items are ignored, keep the first stored image file. The clip still moves to the top of recent history."
-    keepFirstImageButton.setAccessibilityHelp(keepFirstImageButton.toolTip)
-    configurePopup(defaultSortPopup, command: .defaultSort)
-    defaultSortPopup.setAccessibilityLabel("Sort order")
-    addPopupItem("Newest first", 0, to: defaultSortPopup)
-    addPopupItem("Most used first", 1, to: defaultSortPopup)
-    configureCheckbox(launchAtLoginButton, title: "Launch at login", command: .launchAtLogin)
-    configureCheckbox(showMenuBarIconButton, title: "Show Goldfish in the menu bar", command: .showMenuBarIcon)
-    configureCheckbox(goldMenuBarIconButton, title: "Gold menu bar icon", setting: \.goldMenuBarIcon, change: .goldMenuBarIcon)
-    configureCheckbox(showDockIconButton, title: "Show Goldfish in the Dock", command: .showDockIcon)
-    configurePopup(shelfLayoutPopup, setting: \.shelfLayout, change: .other, values: ClipboardShelfLayout.allCases, title: { $0.title })
-    shelfLayoutPopup.setAccessibilityLabel("Shelf layout")
-    configurePopup(panelSidePopup, setting: \.panelSide, change: .panelSide, values: ClipboardPanelSide.allCases, title: { $0.title })
-    panelSidePopup.setAccessibilityLabel("Shelf side")
-    configurePopup(shelfWidthPopup, setting: \.shelfWidth, change: .other, values: ClipboardShelfWidth.allCases, title: { $0.title })
-    shelfWidthPopup.setAccessibilityLabel("Shelf size")
-    configureCheckbox(largerShelfTextButton, title: "Larger text in clips", setting: \.largerShelfText, change: .other)
-    configureStatusLabel(launchStatusLabel)
-
-    let sideRow = labeledRow("Shelf side", panelSidePopup)
-    shelfSideRow = sideRow
+    let historyLabel = NSTextField(labelWithString: "")
+    let stepper = NSStepper()
+    stepper.minValue = Double(AppConfiguration.minHistoryLength)
+    stepper.maxValue = Double(AppConfiguration.maxHistoryLength)
+    stepper.increment = 25
+    stepper.setAccessibilityLabel("History length")
+    bind(stepper, change: .maxHistoryItems, read: { [settings] in
+      stepper.integerValue = settings.maxHistoryItems
+      historyLabel.stringValue = "\(settings.maxHistoryItems) clips"
+    }, write: { [settings] in settings.maxHistoryItems = stepper.integerValue })
+    let sort = NSPopUpButton()
+    for (index, title) in ["Newest first", "Most used first"].enumerated() {
+      sort.addItem(withTitle: title)
+      sort.lastItem?.representedObject = index
+    }
+    sort.setAccessibilityLabel("Sort order")
+    bind(sort, change: .other, read: { [settings] in sort.selectItem(at: settings.sortByUsage ? 1 : 0) },
+      write: { [settings] in settings.sortByUsage = sort.indexOfSelectedItem == 1 })
+    keepFirstImageButton = toggle("Reuse the original image for duplicate copies", \.keepFirstImage, .keepFirstImage,
+      help: "When duplicate items are ignored, keep the first stored image file. The clip still moves to the top of recent history.")
+    goldMenuBarIconButton = toggle("Gold menu bar icon", \.goldMenuBarIcon, .goldMenuBarIcon)
+    let side = popup("Shelf side", \.panelSide, .panelSide, ClipboardPanelSide.allCases, title: { $0.title })
+    shelfSideRow = labeledRow("Shelf side", side)
+    let launch = toggle("Launch at login", \.launchAtLogin, .launchAtLogin) { controller in
+      if !controller.settings.launchAtLogin { controller.settings.setLaunchAtLoginStatus(message: "") }
+      controller.refreshFromSettings()
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak controller] in controller?.refreshFromSettings() }
+    }
+    let menu = toggle("Show Goldfish in the menu bar", \.showMenuBarIcon, .showMenuBarIcon) { controller in
+      if !controller.settings.showMenuBarIcon && !controller.settings.showDockIcon { controller.settings.showDockIcon = true }
+      controller.refreshFromSettings()
+    }
+    let dock = toggle("Show Goldfish in the Dock", \.showDockIcon, .showDockIcon) { controller in
+      if !controller.settings.showDockIcon && !controller.settings.showMenuBarIcon { controller.settings.showMenuBarIcon = true }
+      controller.refreshFromSettings()
+    }
     return page([
-      section(
-        "History",
-        [
-          labeledRow("Keep history", historyRetentionPopup), labeledRow("Clip limit", row([historyLabel, historyStepper])),
-          pruneDuplicatesButton, keepFirstImageButton,
-        ]),
-      section(
-        "Shelf",
-        [
-          labeledRow("Sort order", defaultSortPopup), labeledRow("Layout", shelfLayoutPopup), sideRow,
-          labeledRow("Shelf size", shelfWidthPopup), largerShelfTextButton,
-        ]), soundSettingsSection(),
-      section(
-        "Startup & visibility", [launchAtLoginButton, showMenuBarIconButton, goldMenuBarIconButton, showDockIconButton, launchStatusLabel]),
+      section("History", [
+        labeledRow("Keep history", popup("Keep history", \.historyRetention, .historyRetention, HistoryRetention.allCases, title: { $0.title })),
+        labeledRow("Clip limit", row([historyLabel, stepper])),
+        toggle("Ignore duplicate items", \.pruneDuplicates, .pruneDuplicates), keepFirstImageButton]),
+      section("Shelf", [
+        labeledRow("Sort order", sort),
+        labeledRow("Layout", popup("Shelf layout", \.shelfLayout, .other, ClipboardShelfLayout.allCases, title: { $0.title })),
+        shelfSideRow!,
+        labeledRow("Shelf size", popup("Shelf size", \.shelfWidth, .other, ClipboardShelfWidth.allCases, title: { $0.title })),
+        toggle("Larger text in clips", \.largerShelfText, .other)]),
+      soundSettingsSection(),
+      section("Startup & visibility", [launch, menu, goldMenuBarIconButton, dock, launchStatusLabel]),
     ])
   }
 
   private func soundSettingsSection() -> NSView {
-    configureCheckbox(copySoundButton, title: "Copy sound", setting: \.copySoundEnabled, change: .soundEffects)
-    copySoundButton.toolTip = "Play a soft camera click when a copy is captured from any app, or copied from Goldfish."
-    copySoundButton.setAccessibilityHelp(copySoundButton.toolTip)
-    configureCheckbox(pasteSoundButton, title: "Paste sound", setting: \.pasteSoundEnabled, change: .soundEffects)
-    pasteSoundButton.toolTip = "Play a soft camera click when Goldfish sends a paste to another app."
-    pasteSoundButton.setAccessibilityHelp(pasteSoundButton.toolTip)
-    let soundRows = [
-      (copySoundButton, copySoundPreview, ControlCommand.previewCopySound, "Preview copy sound"),
-      (pasteSoundButton, pasteSoundPreview, ControlCommand.previewPasteSound, "Preview paste sound"),
-    ].map { toggle, preview, command, label -> NSView in
-      bind(preview, to: command)
+    let soundRows: [NSView] = [
+      ("Copy sound", \SettingsModel.copySoundEnabled, ClipboardSound.copy,
+       "Play a soft camera click when a copy is captured from any app, or copied from Goldfish."),
+      ("Paste sound", \SettingsModel.pasteSoundEnabled, ClipboardSound.paste,
+       "Play a soft camera click when Goldfish sends a paste to another app."),
+    ].map { title, key, sound, help in
+      let preview = ShelfNavigationButton()
       preview.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)
       preview.imagePosition = .imageOnly
+      let label = "Preview \(sound == .copy ? "copy" : "paste") sound"
       preview.setAccessibilityLabel(label)
       preview.toolTip = label
       preview.widthAnchor.constraint(equalToConstant: 28).isActive = true
       preview.heightAnchor.constraint(equalToConstant: 28).isActive = true
+      bind(preview, write: { [weak self] in self?.previewSound(sound) })
+      soundPreviews.append(preview)
       let space = NSView()
       space.setContentHuggingPriority(.defaultLow, for: .horizontal)
-      let row = NSStackView(views: [toggle, space, preview])
-      row.alignment = .centerY
-      row.spacing = 8
-      return row
+      let result = NSStackView(views: [toggle(title, key, .soundEffects, help: help), space, preview])
+      result.alignment = .centerY
+      result.spacing = 8
+      return result
     }
-    soundVolumeSlider.minValue = 0
-    soundVolumeSlider.maxValue = 100
-    soundVolumeSlider.isContinuous = true
-    soundVolumeSlider.setAccessibilityLabel("Sound effects volume")
-    soundVolumeSlider.setAccessibilityHelp("Percentage of your Mac's current output volume.")
-    soundVolumeSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
-    bind(soundVolumeSlider, to: .soundVolume)
-    soundVolumeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-    soundVolumeLabel.textColor = .secondaryLabelColor
-    soundVolumeLabel.alignment = .right
-    soundVolumeLabel.widthAnchor.constraint(equalToConstant: 40).isActive = true
-    let volumeTitle = NSTextField(labelWithString: "Volume")
-    volumeTitle.widthAnchor.constraint(equalToConstant: Metrics.settingsLabelWidth).isActive = true
-    let volumeRow = NSStackView(views: [volumeTitle, soundVolumeSlider, soundVolumeLabel])
-    volumeRow.alignment = .centerY
-    volumeRow.spacing = 8
-    return section("Sound effects", soundRows + [volumeRow, caption("Soft camera clicks for captured copies and Goldfish pastes.")])
+    let value = NSTextField(labelWithString: "")
+    value.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+    value.textColor = .secondaryLabelColor
+    value.alignment = .right
+    value.widthAnchor.constraint(equalToConstant: 40).isActive = true
+    let slider = NSSlider()
+    slider.minValue = 0
+    slider.maxValue = 100
+    slider.isContinuous = true
+    slider.setAccessibilityLabel("Sound effects volume")
+    slider.setAccessibilityHelp("Percentage of your Mac's current output volume.")
+    slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    bind(slider, change: .soundEffects, read: { [settings] in
+      slider.doubleValue = settings.soundVolume * 100
+      value.stringValue = "\(Int((settings.soundVolume * 100).rounded()))%"
+    }, write: { [settings] in settings.soundVolume = slider.doubleValue / 100 })
+    let title = NSTextField(labelWithString: "Volume")
+    title.widthAnchor.constraint(equalToConstant: Metrics.settingsLabelWidth).isActive = true
+    let volume = NSStackView(views: [title, slider, value])
+    volume.alignment = .centerY
+    volume.spacing = 8
+    return section("Sound effects", soundRows + [volume, caption("Soft camera clicks for captured copies and Goldfish pastes.")])
   }
 
+  private func captureSettingsView() -> NSView {
+    let pause = toggle("Pause clipboard capture", \.pauseCapture, .pauseCapture, before: { $0.settings.pauseCaptureUntil = nil })
+    let allowed = [("Text", ClipboardItemKind.text), ("Code", .code), ("Links", .url), ("Images", .image),
+      ("Colors", .color), ("Audio", .audio), ("Videos", .video), ("Rich text", .richText), ("PDFs", .pdf), ("Files", .file)]
+      .map { kindCheckbox($0.0, $0.1) }
+    return page([
+      section("Capture", [pause,
+        toggle("Exclude likely secrets", \.excludeSensitive, .excludeSensitive),
+        toggle("Search in image labels", \.includeImageTextInSearch, .includeImageTextInSearch), captureStatusLabel]),
+      section("Allowed content types", [checkboxGrid(allowed)]),
+      section("Ignored source apps", [caption(
+        "macOS does not identify which app wrote the clipboard. Goldfish applies this list to the app that is frontmost when it notices the change."),
+        IgnoredAppsEditor(settings: settings)]),
+    ])
+  }
+
+  private func privacySettingsView() -> NSView {
+    page([
+      section("Local storage", [caption(
+        "History stays in Application Support, encrypted with a local key. Capture pauses if the key is unavailable; storage is restricted to the current user."),
+        toggle("Clear history on quit", \.clearHistoryOnQuit, .clearHistoryOnQuit)]),
+      section("Screen privacy", [caption(
+        "Requests that supported capture tools exclude the shelf. This is not a guarantee; close the shelf before sharing sensitive content."),
+        toggle("Hide panel from screen sharing and recordings", \.hideFromScreenCapture, .hideFromScreenCapture)]),
+      section("Paste permission", [caption("Clipboard capture works without this permission. Grant Accessibility only for direct paste."),
+        row([NSTextField(labelWithString: "Accessibility"), accessibilityStatusLabel]),
+        row([button("Open Accessibility Settings", { $0.requestAccessibilityAccess() }),
+             button("Refresh Permission Status", { $0.refreshAccessibilityPermissionStatus() })]), pasteStatusLabel]),
+    ])
+  }
+
+  private func performanceSettingsView() -> NSView {
+    let slider = NSSlider()
+    slider.minValue = Double(AppConfiguration.minCacheMaxBytes) / 1024 / 1024
+    slider.maxValue = Double(AppConfiguration.maxCacheMaxBytes) / 1024 / 1024
+    slider.setAccessibilityLabel("Preview storage limit in megabytes")
+    let value = NSTextField(labelWithString: "")
+    configureStatusLabel(value)
+    bind(slider, change: .imageCacheMaxBytes, read: { [settings] in
+      slider.doubleValue = Double(settings.imageCacheMaxBytes) / 1024 / 1024
+      value.stringValue = "\(Int(slider.doubleValue.rounded())) MB for previews. Original clips are stored separately."
+    }, write: { [settings] in settings.imageCacheMaxBytes = Int64(slider.doubleValue.rounded()) * 1024 * 1024 })
+    return page([
+      section("Capture responsiveness", [
+        labeledRow("Responsiveness", popup("Capture responsiveness", \.pollProfileRaw, .pollProfile,
+          AppConfiguration.PollProfile.allCases, title: { $0.title })),
+        caption("Faster checks catch rapid copies sooner. Slower checks use less energy when you are copying frequently.")]),
+      section("Preview storage", [labeledRow("Limit (MB)", slider), value]),
+    ])
+  }
+
+  private func dataSettingsView() -> NSView {
+    let cloud = toggle("Back up history to iCloud", \.iCloudSyncEnabled, .cloudSync) { controller in
+      controller.settings.setCloudSyncStatus(message: "")
+      controller.refreshCloudSyncControls(refreshStatus: controller.settings.iCloudSyncEnabled && controller.cachedCloudSyncStatus == nil)
+    }
+    cloudActions = [button("Back Up Now", { $0.pushICloudSyncArchive() }),
+      button("Restore from iCloud", { $0.pullICloudSyncArchive() }), button("Reveal Backup File", { $0.revealICloudSyncFile() })]
+    archiveActions = [button("Export Archive...", { $0.exportClipboardArchive() }), button("Import Archive...", { $0.importClipboardArchive() })]
+    dataStatusLabel.isHidden = true
+    return page([
+      section("iCloud Backup", [caption(
+        "Keep a backup of your history in iCloud and restore it when needed. Changes don’t sync between Macs. Backups are not encrypted by Goldfish."),
+        cloud, row(cloudActions), cloudSyncStatusLabel]),
+      section("Archive", [caption(
+        "Export your history, Pinboards, and saved attachments. External files stay in their original locations. Archives are not encrypted."),
+        row(archiveActions)]),
+      section("Data", [button("Open History Folder", { $0.openHistoryFolder() }),
+        row([button("Clear Clipboard History", { $0.clearClipboardHistory() }),
+             button("Clear Thumbnail Cache", { $0.clearThumbnailCache() })]), dataStatusLabel]),
+    ])
+  }
+
+  private func toggle(
+    _ title: String, _ key: ReferenceWritableKeyPath<SettingsModel, Bool>, _ change: SettingsModel.Change,
+    help: String? = nil, before: @escaping (SettingsWindowController) -> Void = { _ in }, after: @escaping (SettingsWindowController) -> Void = { _ in }
+  ) -> NSButton {
+    let control = NSButton()
+    control.setButtonType(.switch)
+    control.title = title
+    control.setAccessibilityLabel(title)
+    control.toolTip = help
+    control.setAccessibilityHelp(help)
+    bind(control, change: change, read: { [settings] in control.state = settings[keyPath: key] ? .on : .off }, write: { [weak self, settings] in
+      if let self { before(self) }
+      settings[keyPath: key] = control.state == .on
+      if let self { after(self) }
+    })
+    return control
+  }
+
+  private func popup<Value: RawRepresentable>(
+    _ label: String, _ key: ReferenceWritableKeyPath<SettingsModel, Value>, _ change: SettingsModel.Change,
+    _ values: [Value], title: (Value) -> String
+  ) -> NSPopUpButton where Value.RawValue == Int {
+    let control = NSPopUpButton()
+    control.setAccessibilityLabel(label)
+    controlBindings.append(.popup(control, settings: settings, key: key, change: change, values: values, title: title))
+    return control
+  }
+
+  private func button(_ title: String, _ action: @escaping (SettingsWindowController) -> Void) -> NSButton {
+    let control = NSButton()
+    control.title = title
+    control.bezelStyle = .rounded
+    control.setAccessibilityLabel(title)
+    bind(control, write: { [weak self] in if let self { action(self) } })
+    return control
+  }
+
+  private func bind(_ control: NSControl, change: SettingsModel.Change = .other, read: @escaping () -> Void = {}, write: @escaping () -> Void) {
+    controlBindings.append(SettingsControlBinding(control: control, change: change, read: read, write: write))
+  }
   private func shortcutSettingsView() -> NSView {
     let openRow = shortcutRow("Open Clipboard", binding: settings.openShortcut, baseTag: 100)
     let settingsRow = shortcutRow("Open Settings", binding: settings.settingsShortcut, baseTag: 200)
-    configureStatusLabel(shortcutStatusLabel)
     return page([
       section(
         "Shortcuts",
@@ -367,111 +443,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     let row = NSStackView(views: [label, spacer, key])
     row.alignment = .centerY
     return row
-  }
-
-  private func captureSettingsView() -> NSView {
-    configureCheckbox(pauseCaptureButton, title: "Pause clipboard capture", command: .pauseCapture)
-    configureCheckbox(excludeSensitiveButton, title: "Exclude likely secrets", setting: \.excludeSensitive, change: .excludeSensitive)
-    configureCheckbox(
-      includeImageTextButton, title: "Search in image labels", setting: \.includeImageTextInSearch, change: .includeImageTextInSearch)
-    configureStatusLabel(captureStatusLabel)
-
-    let allowedRows = [
-      kindCheckbox("Text", .text), kindCheckbox("Code", .code), kindCheckbox("Links", .url), kindCheckbox("Images", .image),
-      kindCheckbox("Colors", .color), kindCheckbox("Audio", .audio), kindCheckbox("Videos", .video), kindCheckbox("Rich text", .richText),
-      kindCheckbox("PDFs", .pdf), kindCheckbox("Files", .file),
-    ]
-
-    return page([
-      section("Capture", [pauseCaptureButton, excludeSensitiveButton, includeImageTextButton, captureStatusLabel]),
-      section("Allowed content types", [checkboxGrid(allowedRows)]),
-      section(
-        "Ignored source apps",
-        [
-          caption(
-            "macOS does not identify which app wrote the clipboard. Goldfish applies this list to the app that is frontmost when it notices the change."
-          ), IgnoredAppsEditor(settings: settings),
-        ]),
-    ])
-  }
-
-  private func privacySettingsView() -> NSView {
-    let storageLabel = caption(
-      "History stays in Application Support, encrypted with a local key. Capture pauses if the key is unavailable; storage is restricted to the current user."
-    )
-    let screenPrivacyLabel = caption(
-      "Requests that supported capture tools exclude the shelf. This is not a guarantee; close the shelf before sharing sensitive content.")
-    let permissionHelpLabel = caption("Clipboard capture works without this permission. Grant Accessibility only for direct paste.")
-    configureCheckbox(clearHistoryOnQuitButton, title: "Clear history on quit", setting: \.clearHistoryOnQuit, change: .clearHistoryOnQuit)
-    configureCheckbox(
-      hideFromScreenCaptureButton, title: "Hide panel from screen sharing and recordings", setting: \.hideFromScreenCapture,
-      change: .hideFromScreenCapture)
-    configureStatusLabel(accessibilityStatusLabel)
-    let requestButton = button("Open Accessibility Settings", .requestAccessibility)
-    let refreshButton = button("Refresh Permission Status", .refreshAccessibility)
-    configureStatusLabel(pasteStatusLabel)
-
-    return page([
-      section("Local storage", [storageLabel, clearHistoryOnQuitButton]),
-      section("Screen privacy", [screenPrivacyLabel, hideFromScreenCaptureButton]),
-      section(
-        "Paste permission",
-        [
-          permissionHelpLabel, row([NSTextField(labelWithString: "Accessibility"), accessibilityStatusLabel]),
-          row([requestButton, refreshButton]), pasteStatusLabel,
-        ]),
-    ])
-  }
-
-  private func performanceSettingsView() -> NSView {
-    configurePopup(
-      pollProfilePopup, setting: \.pollProfileRaw, change: .pollProfile, values: AppConfiguration.PollProfile.allCases, title: { $0.title })
-    pollProfilePopup.setAccessibilityLabel("Capture responsiveness")
-    cacheSlider.minValue = Double(AppConfiguration.minCacheMaxBytes) / 1024 / 1024
-    cacheSlider.maxValue = Double(AppConfiguration.maxCacheMaxBytes) / 1024 / 1024
-    cacheSlider.numberOfTickMarks = 0
-    cacheSlider.allowsTickMarkValuesOnly = false
-    bind(cacheSlider, to: .cacheLimit)
-    cacheSlider.setAccessibilityLabel("Preview storage limit in megabytes")
-    configureStatusLabel(cacheLabel)
-
-    return page([
-      section(
-        "Capture responsiveness",
-        [
-          labeledRow("Responsiveness", pollProfilePopup),
-          caption("Faster checks catch rapid copies sooner. Slower checks use less energy when you are copying frequently."),
-        ]), section("Preview storage", [labeledRow("Limit (MB)", cacheSlider), cacheLabel]),
-    ])
-  }
-
-  private func dataSettingsView() -> NSView {
-    configureStatusLabel(dataStatusLabel)
-    dataStatusLabel.isHidden = true
-    configureStatusLabel(cloudSyncStatusLabel)
-    configureCheckbox(iCloudSyncButton, title: "Back up history to iCloud", command: .iCloudSync)
-    configureButton(iCloudSyncNowButton, title: "Back Up Now", command: .pushICloudArchive)
-    configureButton(iCloudRestoreButton, title: "Restore from iCloud", command: .pullICloudArchive)
-    configureButton(iCloudRevealButton, title: "Reveal Backup File", command: .revealICloudFile)
-    configureButton(exportArchiveButton, title: "Export Archive...", command: .exportArchive)
-    configureButton(importArchiveButton, title: "Import Archive...", command: .importArchive)
-    let archiveLabel = caption(
-      "Export your history, Pinboards, and saved attachments. External files stay in their original locations. Archives are not encrypted.")
-    let cloudLabel = caption(
-      "Keep a backup of your history in iCloud and restore it when needed. Changes don’t sync between Macs. Backups are not encrypted by Goldfish."
-    )
-    return page([
-      section(
-        "iCloud Backup",
-        [cloudLabel, iCloudSyncButton, row([iCloudSyncNowButton, iCloudRestoreButton, iCloudRevealButton]), cloudSyncStatusLabel]),
-      section("Archive", [archiveLabel, row([exportArchiveButton, importArchiveButton])]),
-      section(
-        "Data",
-        [
-          button("Open History Folder", .openHistoryFolder),
-          row([button("Clear Clipboard History", .clearHistory), button("Clear Thumbnail Cache", .clearCache)]), dataStatusLabel,
-        ]),
-    ])
   }
 
   private func page(_ views: [NSView]) -> NSStackView {
@@ -555,48 +526,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     return label
   }
 
-  private func button(_ title: String, _ command: ControlCommand) -> NSButton {
-    let control = NSButton()
-    configureButton(control, title: title, command: command)
-    return control
-  }
-
-  private func configureButton(_ control: NSButton, title: String, command: ControlCommand) {
-    control.title = title
-    bind(control, to: command)
-    control.bezelStyle = .rounded
-    control.setAccessibilityLabel(title)
-  }
-
-  private func configureCheckbox(
-    _ control: NSButton, title: String, setting: ReferenceWritableKeyPath<SettingsModel, Bool>, change: SettingsModel.Change
-  ) {
-    control.setButtonType(.switch)
-    control.title = title
-    control.setAccessibilityLabel(title)
-    controlBindings.append(.checkbox(control, settings: settings, key: setting, change: change))
-  }
-
-  private func configurePopup<Value: RawRepresentable>(
-    _ popup: NSPopUpButton, setting: ReferenceWritableKeyPath<SettingsModel, Value>, change: SettingsModel.Change, values: [Value],
-    title: (Value) -> String
-  ) where Value.RawValue == Int {
-    controlBindings.append(.popup(popup, settings: settings, key: setting, change: change, values: values, title: title))
-  }
-
-  private func configureCheckbox(_ control: NSButton, title: String, command: ControlCommand) {
-    configureCheckbox(control, title: title, action: #selector(performControlCommand(_:)))
-    control.tag = command.rawValue
-  }
-
-  private func configureCheckbox(_ control: NSButton, title: String, action: Selector) {
-    control.setButtonType(.switch)
-    control.title = title
-    control.target = self
-    control.action = action
-    control.setAccessibilityLabel(title)
-  }
-
   private func configureStatusLabel(_ label: NSTextField) {
     label.textColor = ClipboardShelfStyle.secondaryText
     label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -607,25 +536,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
   }
 
-  private func configurePopup(_ popup: NSPopUpButton, command: ControlCommand) {
-    popup.removeAllItems()
-    bind(popup, to: command)
-  }
-
-  private func bind(_ control: NSControl, to command: ControlCommand) {
-    control.tag = command.rawValue
-    control.target = self
-    control.action = #selector(performControlCommand(_:))
-  }
-
-  private func addPopupItem(_ title: String, _ rawValue: Int, to popup: NSPopUpButton) {
-    popup.addItem(withTitle: title)
-    popup.lastItem?.representedObject = rawValue
-  }
-
   private func kindCheckbox(_ title: String, _ kind: ClipboardItemKind) -> NSButton {
     let control = NSButton()
-    configureCheckbox(control, title: title, action: #selector(allowedKindChanged(_:)))
+    control.setButtonType(.switch)
+    control.title = title
+    control.setAccessibilityLabel(title)
+    control.target = self
+    control.action = #selector(allowedKindChanged(_:))
     control.tag = kind.rawValue
     allowedKindButtons.append((kind, control))
     return control
@@ -648,146 +565,32 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     return row([label, recorder])
   }
 
-  private func refreshFromSettings(for change: SettingsModel.Change) {
-    controlBindings.forEach { $0.refresh(for: change) }
-    shortcutRecorders[100]?.binding = settings.openShortcut
-    shortcutRecorders[200]?.binding = settings.settingsShortcut
-    switch change {
-    case .maxHistoryItems: refreshHistoryLimitControls()
-    case .defaultSortMode: refreshDefaultSortControl()
-    case .imageCacheMaxBytes: refreshCacheControls()
-    case .pruneDuplicates: keepFirstImageButton.isEnabled = settings.pruneDuplicates
-    case .openShortcut, .settingsShortcut: refreshShortcutStatusLabel()
-    case .launchAtLogin: refreshLaunchAtLoginControls()
-    case .status: refreshStatusIndicators(refreshCloudSyncStatus: false)
-    case .captureStatus: refreshCaptureStatusLabel()
-    case .cloudSync:
-      dataCoordinator.setBackupEnabled(settings.iCloudSyncEnabled)
-      refreshCloudSyncControls(refreshStatus: settings.iCloudSyncEnabled && cachedCloudSyncStatus == nil)
-    case .ignoredItemKinds: refreshAllowedKindControls()
-    case .pauseCapture: refreshPauseCaptureControls()
-    case .soundEffects: refreshSoundControls()
-    case .showMenuBarIcon, .goldMenuBarIcon, .showDockIcon: refreshVisibilityControls()
-    case .historyRetention, .includeImageTextInSearch, .ignoredApps, .keepFirstImage, .excludeSensitive, .hideFromScreenCapture,
-      .clearHistoryOnQuit, .pollProfile, .panelSide:
-      break
-    default: refreshFromSettings(refreshCloudSyncStatus: false)
-    }
-  }
-
   private func refreshFromSettings(refreshCloudSyncStatus: Bool = false) {
     controlBindings.forEach { $0.refresh() }
-    refreshHistoryLimitControls()
-    refreshDefaultSortControl()
+    shortcutRecorders[100]?.binding = settings.openShortcut
+    shortcutRecorders[200]?.binding = settings.settingsShortcut
     keepFirstImageButton.isEnabled = settings.pruneDuplicates
-    refreshLaunchAtLoginControls()
-    refreshVisibilityControls()
-    refreshSoundControls()
-    shelfSideRow?.isHidden = settings.shelfLayout == .cards
-
-    refreshPauseCaptureControls()
-    refreshAllowedKindControls()
-
-    refreshCacheControls()
-    refreshStatusIndicators(refreshCloudSyncStatus: refreshCloudSyncStatus)
-  }
-
-  private func refreshHistoryLimitControls() {
-    historyLabel.stringValue = "\(settings.maxHistoryItems) clips"
-    historyStepper.integerValue = settings.maxHistoryItems
-  }
-
-  private func refreshDefaultSortControl() { select(defaultSortPopup, rawValue: settings.sortByUsage ? 1 : 0) }
-
-  private func refreshAllowedKindControls() {
-    for (kind, button) in allowedKindButtons { button.state = settings.ignoredItemKindsRaw.contains(kind.rawValue) ? .off : .on }
-  }
-
-  private func refreshLaunchAtLoginControls() {
-    launchAtLoginButton.state = settings.launchAtLogin ? .on : .off
-    let presentation = Self.launchAtLoginStatusPresentation(storedStatus: settings.launchAtLoginErrorMessage)
-    launchStatusLabel.stringValue = presentation.message
-    launchStatusLabel.isHidden = presentation.message.isEmpty
-    launchStatusLabel.textColor = presentation.textColor
-  }
-
-  static func launchAtLoginStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
-    let storedStatus = storedStatus.clipboardTrimmed
-    guard !storedStatus.isEmpty else { return ("", .secondaryLabelColor) }
-    return (storedStatus, .systemRed)
-  }
-
-  private func refreshVisibilityControls() {
-    showMenuBarIconButton.state = settings.showMenuBarIcon ? .on : .off
     goldMenuBarIconButton.isEnabled = settings.showMenuBarIcon
-    showDockIconButton.state = settings.showDockIcon ? .on : .off
-  }
-
-  private func refreshSoundControls() {
-    soundVolumeSlider.doubleValue = settings.soundVolume * 100
-    soundVolumeLabel.stringValue = "\(Int((settings.soundVolume * 100).rounded()))%"
-    copySoundPreview.isEnabled = settings.soundVolume > 0
-    pasteSoundPreview.isEnabled = settings.soundVolume > 0
-  }
-
-  private func refreshPauseCaptureControls() {
-    pauseCaptureButton.state = settings.pauseCapture ? .on : .off
-    refreshCaptureStatusLabel()
-  }
-
-  private func refreshCaptureStatusLabel() { setCaptureStatusLabel(settings.captureStatusMessage) }
-
-  private func setCaptureStatusLabel(_ message: String) {
-    let presentation = Self.captureStatusPresentation(storedStatus: message)
-    captureStatusLabel.stringValue = presentation.message
-    captureStatusLabel.textColor = presentation.textColor
-  }
-
-  static func captureStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
-    let storedStatus = storedStatus.clipboardTrimmed
-    guard !storedStatus.isEmpty else { return ("Capture status will appear after the app sees clipboard activity.", .secondaryLabelColor) }
-    return (storedStatus, captureStatusColor(for: storedStatus))
-  }
-
-  private static func captureStatusColor(for message: String) -> NSColor {
-    let lowercasedMessage = message.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
-      .lowercased()
-    if lowercasedMessage.hasPrefix("captured") || lowercasedMessage.hasPrefix("allowed content types updated")
-      || lowercasedMessage.contains("capture running") || lowercasedMessage.contains("capture is running")
-      || lowercasedMessage.contains("capture resumed")
-    {
-      return .systemGreen
-    }
-    if lowercasedMessage.hasPrefix("error") || lowercasedMessage.contains("failed") || lowercasedMessage.contains("could not") {
-      return .systemRed
-    }
-    if lowercasedMessage.hasPrefix("skipped") || lowercasedMessage.contains("ignored") || lowercasedMessage.contains("paused")
-      || lowercasedMessage.contains("at least one")
-    {
-      return .systemOrange
-    }
-    return .secondaryLabelColor
-  }
-
-  private func refreshStatusIndicators(refreshCloudSyncStatus: Bool) {
-    refreshLaunchAtLoginControls()
-    refreshShortcutStatusLabel()
-    refreshCaptureStatusLabel()
+    shelfSideRow?.isHidden = settings.shelfLayout == .cards
+    soundPreviews.forEach { $0.isEnabled = settings.soundVolume > 0 }
+    for (kind, button) in allowedKindButtons { button.state = settings.ignoredItemKindsRaw.contains(kind.rawValue) ? .off : .on }
+    update(launchStatusLabel, Self.launchAtLoginStatusPresentation(storedStatus: settings.launchAtLoginErrorMessage), hideEmpty: true)
+    update(shortcutStatusLabel, Self.shortcutStatusPresentation(storedStatus: settings.shortcutStatusMessage))
+    setCaptureStatusLabel(settings.captureStatusMessage)
     refreshAccessibilityPermissionStatusLabel()
-    refreshPasteStatusLabel()
+    update(pasteStatusLabel, Self.pasteStatusPresentation(storedStatus: settings.pasteStatusMessage))
+    dataCoordinator.setBackupEnabled(settings.iCloudSyncEnabled)
     refreshCloudSyncControls(refreshStatus: refreshCloudSyncStatus)
   }
 
-  private func refreshShortcutStatusLabel() {
-    let presentation = Self.shortcutStatusPresentation(storedStatus: settings.shortcutStatusMessage)
-    shortcutStatusLabel.stringValue = presentation.message
-    shortcutStatusLabel.textColor = presentation.textColor
+  private func update(_ label: NSTextField, _ presentation: (message: String, textColor: NSColor), hideEmpty: Bool = false) {
+    label.stringValue = presentation.message
+    label.textColor = presentation.textColor
+    if hideEmpty { label.isHidden = presentation.message.isEmpty }
   }
 
-  static func shortcutStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
-    let storedStatus = storedStatus.clipboardTrimmed
-    guard !storedStatus.isEmpty else { return ("Registered", .systemGreen) }
-    return (storedStatus, .systemRed)
+  private func setCaptureStatusLabel(_ message: String) {
+    update(captureStatusLabel, Self.captureStatusPresentation(storedStatus: message))
   }
 
   private func refreshAccessibilityPermissionStatusLabel() {
@@ -797,40 +600,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     accessibilityStatusLabel.textColor = presentation.textColor
   }
 
-  static func accessibilityPermissionStatusPresentation(storedStatus: String, isTrusted: Bool) -> (message: String, textColor: NSColor) {
-    let trimmedStatus = storedStatus.clipboardTrimmed
-    guard trimmedStatus.isEmpty else { return (trimmedStatus, .systemOrange) }
-    return isTrusted ? ("Granted", .systemGreen) : ("Not granted (clipboard capture still works; paste falls back to copy)", .systemOrange)
-  }
-
-  private func refreshPasteStatusLabel() {
-    let presentation = Self.pasteStatusPresentation(storedStatus: settings.pasteStatusMessage)
-    pasteStatusLabel.stringValue = presentation.message
-    pasteStatusLabel.textColor = presentation.textColor
-  }
-
-  static func pasteStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
-    let storedStatus = storedStatus.clipboardTrimmed
-    guard !storedStatus.isEmpty else { return ("No paste action yet.", .secondaryLabelColor) }
-    return (storedStatus, pasteStatusColor(for: storedStatus))
-  }
-
-  private static func pasteStatusColor(for message: String) -> NSColor {
-    let lowercasedMessage = message.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
-      .lowercased()
-    if lowercasedMessage.contains("could not") || lowercasedMessage.contains("failed") { return .systemRed }
-    if lowercasedMessage.contains("grant accessibility") || lowercasedMessage.contains("not granted") { return .systemOrange }
-    if lowercasedMessage.hasPrefix("pasted") || lowercasedMessage.hasPrefix("copied") { return .systemGreen }
-    return .secondaryLabelColor
-  }
-
-  private func refreshCacheControls() {
-    cacheSlider.doubleValue = Double(settings.imageCacheMaxBytes) / 1024 / 1024
-    cacheLabel.stringValue = "\(cacheLimitMegabytes) MB for previews. Original clips are stored separately."
-  }
-
-  private var cacheLimitMegabytes: Int { Int((Double(settings.imageCacheMaxBytes) / 1024 / 1024).rounded()) }
-
   private func setDataStatus(_ message: String) {
     let presentation = Self.dataStatusPresentation(storedStatus: message)
     dataStatusLabel.stringValue = presentation.message
@@ -839,65 +608,80 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     if selectedTabIndex == 5 { fitSelectedTab(animated: false) }
   }
 
-  static func dataStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
-    let storedStatus = storedStatus.clipboardTrimmed
-    guard !storedStatus.isEmpty else { return ("", .secondaryLabelColor) }
-    return (storedStatus, dataStatusColor(for: storedStatus))
-  }
-
-  private static func dataStatusColor(for message: String) -> NSColor {
-    let lowercasedMessage = message.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
-      .lowercased()
-    if lowercasedMessage.contains("could not") || lowercasedMessage.contains("couldn") || lowercasedMessage.contains("denied")
-      || lowercasedMessage.contains("error") || lowercasedMessage.contains("failed") || lowercasedMessage.contains("invalid")
-      || lowercasedMessage.contains("missing") || lowercasedMessage.contains("not permitted") || lowercasedMessage.contains("unavailable")
-    {
-      return .systemRed
-    }
-    if lowercasedMessage.contains("skipped") { return .systemOrange }
-    if lowercasedMessage.hasPrefix("exported") || lowercasedMessage.hasPrefix("imported") || lowercasedMessage.hasPrefix("cleared") {
-      return .systemGreen
-    }
-    return .secondaryLabelColor
-  }
-
   private func refreshCloudSyncControls(refreshStatus: Bool) {
-    iCloudSyncButton.state = settings.iCloudSyncEnabled ? .on : .off
     let cloudStatus = cloudSyncStatus(refresh: refreshStatus)
     let presentation = Self.cloudSyncStatusPresentation(
       storedStatus: settings.cloudSyncStatusMessage, isSyncEnabled: settings.iCloudSyncEnabled, cloudStatus: cloudStatus)
     cloudSyncStatusLabel.stringValue = presentation.message
     cloudSyncStatusLabel.textColor = presentation.textColor
     let cloudActionsEnabled = settings.iCloudSyncEnabled && cloudStatus?.isAvailable == true && !dataOperationInProgress
-    iCloudSyncNowButton.isEnabled = cloudActionsEnabled
-    iCloudRestoreButton.isEnabled = cloudActionsEnabled
-    iCloudRevealButton.isEnabled = cloudActionsEnabled
+    cloudActions.forEach { $0.isEnabled = cloudActionsEnabled }
   }
 
-  static func cloudSyncStatusPresentation(storedStatus: String, isSyncEnabled: Bool, cloudStatus: ClipboardCloudSyncStatus?) -> (
-    message: String, textColor: NSColor
-  ) {
-    let storedStatus = storedStatus.clipboardTrimmed
-    if !storedStatus.isEmpty { return (storedStatus, cloudSyncStatusColor(for: storedStatus)) }
-
-    if !isSyncEnabled { return ("iCloud Backup is off.", .secondaryLabelColor) }
-
-    guard let cloudStatus else { return ("iCloud Backup is unavailable.", .systemOrange) }
-
-    return (cloudStatus.message, cloudStatus.isAvailable ? .secondaryLabelColor : .systemOrange)
+  private typealias StatusPresentation = (message: String, textColor: NSColor)
+  private struct StatusRule {
+    let prefixes: [String]
+    let fragments: [String]
+    let color: NSColor
   }
 
-  private static func cloudSyncStatusColor(for message: String) -> NSColor {
-    let lowercasedMessage = message.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
-      .lowercased()
-    if lowercasedMessage.contains("failed") { return .systemRed }
-    if lowercasedMessage.contains("unavailable") || lowercasedMessage.contains("turn on") || lowercasedMessage.contains("skipped") {
-      return .systemOrange
-    }
-    if lowercasedMessage.hasPrefix("backed up") || lowercasedMessage.hasPrefix("restored") || lowercasedMessage.hasPrefix("opened") {
-      return .systemGreen
-    }
-    return .secondaryLabelColor
+  private static func present(_ status: String, empty: StatusPresentation, rules: [StatusRule]) -> StatusPresentation {
+    let message = status.clipboardTrimmed
+    guard !message.isEmpty else { return empty }
+    let folded = message.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")).lowercased()
+    let color = rules.first { rule in
+      rule.prefixes.contains(where: folded.hasPrefix) || rule.fragments.contains(where: folded.contains)
+    }?.color ?? .secondaryLabelColor
+    return (message, color)
+  }
+
+  static func launchAtLoginStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
+    present(storedStatus, empty: ("", .secondaryLabelColor), rules: [.init(prefixes: [""], fragments: [], color: .systemRed)])
+  }
+
+  static func captureStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
+    present(storedStatus, empty: ("Capture status will appear after the app sees clipboard activity.", .secondaryLabelColor), rules: [
+      .init(prefixes: ["captured", "allowed content types updated"],
+        fragments: ["capture running", "capture is running", "capture resumed"], color: .systemGreen),
+      .init(prefixes: ["error"], fragments: ["failed", "could not"], color: .systemRed),
+      .init(prefixes: ["skipped"], fragments: ["ignored", "paused", "at least one"], color: .systemOrange),
+    ])
+  }
+
+  static func shortcutStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
+    present(storedStatus, empty: ("Registered", .systemGreen), rules: [.init(prefixes: [""], fragments: [], color: .systemRed)])
+  }
+
+  static func accessibilityPermissionStatusPresentation(storedStatus: String, isTrusted: Bool) -> (message: String, textColor: NSColor) {
+    present(storedStatus,
+      empty: isTrusted ? ("Granted", .systemGreen) : ("Not granted (clipboard capture still works; paste falls back to copy)", .systemOrange),
+      rules: [.init(prefixes: [""], fragments: [], color: .systemOrange)])
+  }
+
+  static func pasteStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
+    present(storedStatus, empty: ("No paste action yet.", .secondaryLabelColor), rules: [
+      .init(prefixes: [], fragments: ["could not", "failed"], color: .systemRed),
+      .init(prefixes: [], fragments: ["grant accessibility", "not granted"], color: .systemOrange),
+      .init(prefixes: ["pasted", "copied"], fragments: [], color: .systemGreen),
+    ])
+  }
+
+  static func dataStatusPresentation(storedStatus: String) -> (message: String, textColor: NSColor) {
+    present(storedStatus, empty: ("", .secondaryLabelColor), rules: [
+      .init(prefixes: [], fragments: ["could not", "couldn", "denied", "error", "failed", "invalid", "missing", "not permitted", "unavailable"], color: .systemRed),
+      .init(prefixes: [], fragments: ["skipped"], color: .systemOrange),
+      .init(prefixes: ["exported", "imported", "cleared"], fragments: [], color: .systemGreen),
+    ])
+  }
+
+  static func cloudSyncStatusPresentation(storedStatus: String, isSyncEnabled: Bool, cloudStatus: ClipboardCloudSyncStatus?) -> (message: String, textColor: NSColor) {
+    let fallback: StatusPresentation = !isSyncEnabled ? ("iCloud Backup is off.", .secondaryLabelColor)
+      : cloudStatus.map { ($0.message, $0.isAvailable ? .secondaryLabelColor : .systemOrange) } ?? ("iCloud Backup is unavailable.", .systemOrange)
+    return present(storedStatus, empty: fallback, rules: [
+      .init(prefixes: [], fragments: ["failed"], color: .systemRed),
+      .init(prefixes: [], fragments: ["unavailable", "turn on", "skipped"], color: .systemOrange),
+      .init(prefixes: ["backed up", "restored", "opened"], fragments: [], color: .systemGreen),
+    ])
   }
 
   private func cloudSyncStatus(refresh: Bool) -> ClipboardCloudSyncStatus? {
@@ -911,67 +695,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   }
 
   private func commitPendingEditorDrafts() { shortcutRecorders.values.forEach { $0.cancelRecording() } }
-
-  private func select(_ popup: NSPopUpButton, rawValue: Int) {
-    for item in popup.itemArray where item.representedObject as? Int == rawValue {
-      popup.select(item)
-      return
-    }
-  }
-
-  @objc private func performControlCommand(_ sender: NSControl) {
-    guard let command = ControlCommand(rawValue: sender.tag) else { return }
-    switch command {
-    case .historyLength:
-      settings.maxHistoryItems = historyStepper.integerValue
-      refreshHistoryLimitControls()
-    case .defaultSort: settings.sortByUsage = defaultSortPopup.selectedItem?.representedObject as? Int == 1
-    case .soundVolume:
-      settings.soundVolume = soundVolumeSlider.doubleValue / 100
-      refreshSoundControls()
-    case .previewCopySound: previewSound(.copy)
-    case .previewPasteSound: previewSound(.paste)
-    case .launchAtLogin:
-      let enabled = launchAtLoginButton.state == .on
-      settings.launchAtLogin = enabled
-      if !enabled { settings.setLaunchAtLoginStatus(message: "") }
-      refreshLaunchAtLoginControls()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.refreshLaunchAtLoginControls() }
-    case .showMenuBarIcon:
-      let shouldShow = showMenuBarIconButton.state == .on
-      settings.showMenuBarIcon = shouldShow
-      if !shouldShow && !settings.showDockIcon { settings.showDockIcon = true }
-      refreshVisibilityControls()
-    case .showDockIcon:
-      let shouldShow = showDockIconButton.state == .on
-      settings.showDockIcon = shouldShow
-      if !shouldShow && !settings.showMenuBarIcon { settings.showMenuBarIcon = true }
-      refreshVisibilityControls()
-    case .pauseCapture:
-      settings.pauseCaptureUntil = nil
-      settings.pauseCapture = pauseCaptureButton.state == .on
-    case .requestAccessibility: requestAccessibilityAccess()
-    case .refreshAccessibility: refreshAccessibilityPermissionStatus()
-    case .cacheLimit:
-      let megabytes = Int(cacheSlider.doubleValue.rounded())
-      settings.imageCacheMaxBytes = Int64(megabytes * 1024 * 1024)
-      refreshCacheControls()
-    case .iCloudSync:
-      let enabled = iCloudSyncButton.state == .on
-      settings.iCloudSyncEnabled = enabled
-      settings.setCloudSyncStatus(message: "")
-      if !enabled { cachedCloudSyncStatus = nil }
-      refreshCloudSyncControls(refreshStatus: enabled && cachedCloudSyncStatus == nil)
-    case .openHistoryFolder: openHistoryFolder()
-    case .exportArchive: exportClipboardArchive()
-    case .importArchive: importClipboardArchive()
-    case .pushICloudArchive: pushICloudSyncArchive()
-    case .pullICloudArchive: pullICloudSyncArchive()
-    case .revealICloudFile: revealICloudSyncFile()
-    case .clearHistory: clearClipboardHistory()
-    case .clearCache: clearThumbnailCache()
-    }
-  }
 
   @objc private func allowedKindChanged(_ sender: NSButton) {
     guard let kind = ClipboardItemKind(rawValue: sender.tag) else { return }
@@ -1110,14 +833,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
   private func performDataOperation<ResultValue>(_ operation: @escaping () -> ResultValue, completion: @escaping (ResultValue) -> Void) {
     dataOperationInProgress = true
-    exportArchiveButton.isEnabled = false
-    importArchiveButton.isEnabled = false
+    archiveActions.forEach { $0.isEnabled = false }
     refreshCloudSyncControls(refreshStatus: false)
     dataCoordinator.perform(operation) { [weak self] result in
       guard let self else { return }
       self.dataOperationInProgress = false
-      self.exportArchiveButton.isEnabled = true
-      self.importArchiveButton.isEnabled = true
+      self.archiveActions.forEach { $0.isEnabled = true }
       completion(result)
       self.refreshCloudSyncControls(refreshStatus: false)
     }
@@ -1192,5 +913,4 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     return nil
   }
-
 }

@@ -1,11 +1,9 @@
 import XCTest
 @testable import Goldfish
 
-final class SettingsModelTests: XCTestCase {
+final class SettingsModelTests: IsolatedTestCase {
   func testNewAndLegacyProfilesKeepTheVerticalShelf() {
-    let suite = "Goldfish.VerticalDefault.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = makeTestDefaults()
     XCTAssertEqual(SettingsModel(defaults: defaults).shelfLayout, .sidebar)
     defaults.removeObject(forKey: SettingsModel.Keys.shelfLayout)
     XCTAssertEqual(SettingsModel(defaults: defaults).shelfLayout, .sidebar)
@@ -18,11 +16,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testFreshProfileRequiresOnboardingUntilCompleted() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     var changes: [SettingsModel.Change] = []
     settings.observe { changes.append($0) }
@@ -42,11 +36,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testLegacyProfileDoesNotShowOnboardingAfterUpgrade() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     defaults.set(AppConfiguration.defaultHistoryLength, forKey: SettingsModel.Keys.maxHistoryItems)
 
     let settings = SettingsModel(defaults: defaults)
@@ -55,73 +45,28 @@ final class SettingsModelTests: XCTestCase {
     XCTAssertTrue(defaults.bool(forKey: SettingsModel.Keys.onboardingCompleted))
   }
 
-  func testShowDockIconPersistsAndNotifies() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
+  func testAppearancePreferencesPersistAndNotify() {
+    let cases: [(ReferenceWritableKeyPath<SettingsModel, Bool>, String, SettingsModel.Change)] = [
+      (\.showDockIcon, SettingsModel.Keys.showDockIcon, .showDockIcon),
+      (\.goldMenuBarIcon, SettingsModel.Keys.goldMenuBarIcon, .goldMenuBarIcon),
+      (\.hideFromScreenCapture, SettingsModel.Keys.hideFromScreenCapture, .hideFromScreenCapture),
+    ]
+    for (property, storageKey, change) in cases {
+      let defaults = makeTestDefaults()
+      let settings = SettingsModel(defaults: defaults)
+      var changes: [SettingsModel.Change] = []
+      settings.observe { changes.append($0) }
+      XCTAssertFalse(settings[keyPath: property], storageKey)
+      settings[keyPath: property] = true
+      XCTAssertTrue(defaults.bool(forKey: storageKey), storageKey)
+      XCTAssertEqual(changes.count, 1, storageKey)
+      XCTAssertEqual(changes, [change], storageKey)
+      XCTAssertTrue(SettingsModel(defaults: defaults)[keyPath: property], storageKey)
     }
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
-    XCTAssertFalse(settings.showDockIcon)
-
-    settings.showDockIcon = true
-
-    XCTAssertTrue(defaults.bool(forKey: SettingsModel.Keys.showDockIcon))
-    XCTAssertEqual(changes.count, 1)
-    guard case .showDockIcon = changes.first else {
-      return XCTFail("Expected showDockIcon change notification")
-    }
-
-    let restored = SettingsModel(defaults: defaults)
-    XCTAssertTrue(restored.showDockIcon)
-  }
-
-  func testGoldMenuBarIconPersistsAndNotifies() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
-    XCTAssertFalse(settings.goldMenuBarIcon)
-    settings.goldMenuBarIcon = true
-
-    XCTAssertTrue(defaults.bool(forKey: SettingsModel.Keys.goldMenuBarIcon))
-    XCTAssertEqual(changes, [.goldMenuBarIcon])
-    XCTAssertTrue(SettingsModel(defaults: defaults).goldMenuBarIcon)
-  }
-
-  func testHideFromScreenCapturePersistsAndNotifies() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
-    let settings = SettingsModel(defaults: defaults)
-    var changes: [SettingsModel.Change] = []
-    settings.observe { changes.append($0) }
-
-    XCTAssertFalse(settings.hideFromScreenCapture)
-
-    settings.hideFromScreenCapture = true
-
-    XCTAssertTrue(defaults.bool(forKey: SettingsModel.Keys.hideFromScreenCapture))
-    XCTAssertEqual(changes, [.hideFromScreenCapture])
-
-    let restored = SettingsModel(defaults: defaults)
-    XCTAssertTrue(restored.hideFromScreenCapture)
   }
 
   func testPanelSidePersistsAndNotifies() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     var changes: [SettingsModel.Change] = []
     settings.observe { changes.append($0) }
@@ -138,11 +83,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testImageCacheMinimumAllowsTwoMegabytes() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let twoMegabytes = Int64(2 * 1024 * 1024)
     defaults.set(twoMegabytes, forKey: SettingsModel.Keys.imageCacheMaxBytes)
 
@@ -153,11 +94,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testICloudSyncPersistsAndNotifies() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     var changes: [SettingsModel.Change] = []
     settings.observe { changes.append($0) }
@@ -187,11 +124,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testPauseCaptureUntilPersistsAndCanBeCleared() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     let pauseUntil = Date(timeIntervalSince1970: 1_234_567)
     var changes: [SettingsModel.Change] = []
@@ -214,11 +147,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testIgnoredAppsPersistsAndNotifiesNarrowChange() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     var changes: [SettingsModel.Change] = []
     settings.observe { changes.append($0) }
@@ -233,11 +162,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testCommonControlSettingsNotifyNarrowChanges() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     settings.excludeSensitive = false
     var changes: [SettingsModel.Change] = []
@@ -272,11 +197,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testIgnoredItemKindsCannotDisableEveryVisibleKind() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     let allVisibleKindRawValues = Self.visibleItemKinds.map(\.rawValue)
     let expectedIgnoredKindRawValues = allVisibleKindRawValues.filter {
@@ -299,11 +220,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testStoredIgnoredItemKindsCannotDisableEveryVisibleKind() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let allVisibleKindRawValues = Self.visibleItemKinds.map(\.rawValue)
     let expectedIgnoredKindRawValues = allVisibleKindRawValues.filter {
       $0 != ClipboardItemKind.text.rawValue
@@ -319,72 +236,32 @@ final class SettingsModelTests: XCTestCase {
     )
   }
 
-  func testStoredImageCacheLimitIsClampedToSettingsRange() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let zeroDefaults = UserDefaults(suiteName: "\(suiteName).zero")!
-    let lowDefaults = UserDefaults(suiteName: "\(suiteName).low")!
-    let highDefaults = UserDefaults(suiteName: "\(suiteName).high")!
-    defer {
-      zeroDefaults.removePersistentDomain(forName: "\(suiteName).zero")
-      lowDefaults.removePersistentDomain(forName: "\(suiteName).low")
-      highDefaults.removePersistentDomain(forName: "\(suiteName).high")
-    }
-
-    zeroDefaults.set(0, forKey: SettingsModel.Keys.imageCacheMaxBytes)
-    let zeroSettings = SettingsModel(defaults: zeroDefaults)
-
-    XCTAssertEqual(zeroSettings.imageCacheMaxBytes, AppConfiguration.defaultCacheMaxBytes)
-    XCTAssertEqual(Int64(zeroDefaults.integer(forKey: SettingsModel.Keys.imageCacheMaxBytes)), AppConfiguration.defaultCacheMaxBytes)
-
-    lowDefaults.set(1 * 1024 * 1024, forKey: SettingsModel.Keys.imageCacheMaxBytes)
-    let lowSettings = SettingsModel(defaults: lowDefaults)
-
-    XCTAssertEqual(lowSettings.imageCacheMaxBytes, AppConfiguration.minCacheMaxBytes)
-    XCTAssertEqual(Int64(lowDefaults.integer(forKey: SettingsModel.Keys.imageCacheMaxBytes)), AppConfiguration.minCacheMaxBytes)
-
-    highDefaults.set(2048 * 1024 * 1024, forKey: SettingsModel.Keys.imageCacheMaxBytes)
-    let highSettings = SettingsModel(defaults: highDefaults)
-
-    XCTAssertEqual(highSettings.imageCacheMaxBytes, AppConfiguration.maxCacheMaxBytes)
-    XCTAssertEqual(Int64(highDefaults.integer(forKey: SettingsModel.Keys.imageCacheMaxBytes)), AppConfiguration.maxCacheMaxBytes)
+  func testStoredLimitsAreClampedAndPersisted() {
+    let cacheCases: [(Int64, Int64)] = [
+      (0, AppConfiguration.defaultCacheMaxBytes), (1 * 1024 * 1024, AppConfiguration.minCacheMaxBytes),
+      (2048 * 1024 * 1024, AppConfiguration.maxCacheMaxBytes),
+    ]
+    assertStoredLimits(\.imageCacheMaxBytes, key: SettingsModel.Keys.imageCacheMaxBytes, cases: cacheCases)
+    assertStoredLimits(\.maxHistoryItems, key: SettingsModel.Keys.maxHistoryItems, cases: [
+      (0, AppConfiguration.defaultHistoryLength), (1, AppConfiguration.minHistoryLength),
+      (100_000, AppConfiguration.maxHistoryLength),
+    ])
   }
 
-  func testStoredHistoryLimitIsClampedToSettingsRange() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let zeroDefaults = UserDefaults(suiteName: "\(suiteName).zero")!
-    let lowDefaults = UserDefaults(suiteName: "\(suiteName).low")!
-    let highDefaults = UserDefaults(suiteName: "\(suiteName).high")!
-    defer {
-      zeroDefaults.removePersistentDomain(forName: "\(suiteName).zero")
-      lowDefaults.removePersistentDomain(forName: "\(suiteName).low")
-      highDefaults.removePersistentDomain(forName: "\(suiteName).high")
+  private func assertStoredLimits<Value: BinaryInteger>(
+    _ property: KeyPath<SettingsModel, Value>, key: String, cases: [(Value, Value)],
+    file: StaticString = #filePath, line: UInt = #line
+  ) {
+    for (input, expected) in cases {
+      let defaults = makeTestDefaults()
+      defaults.set(input, forKey: key)
+      XCTAssertEqual(SettingsModel(defaults: defaults)[keyPath: property], expected, "\(key): \(input)", file: file, line: line)
+      XCTAssertEqual(Value(defaults.integer(forKey: key)), expected, "\(key): \(input)", file: file, line: line)
     }
-
-    zeroDefaults.set(0, forKey: SettingsModel.Keys.maxHistoryItems)
-    let zeroSettings = SettingsModel(defaults: zeroDefaults)
-
-    XCTAssertEqual(zeroSettings.maxHistoryItems, AppConfiguration.defaultHistoryLength)
-    XCTAssertEqual(zeroDefaults.integer(forKey: SettingsModel.Keys.maxHistoryItems), AppConfiguration.defaultHistoryLength)
-
-    lowDefaults.set(1, forKey: SettingsModel.Keys.maxHistoryItems)
-    let lowSettings = SettingsModel(defaults: lowDefaults)
-
-    XCTAssertEqual(lowSettings.maxHistoryItems, AppConfiguration.minHistoryLength)
-    XCTAssertEqual(lowDefaults.integer(forKey: SettingsModel.Keys.maxHistoryItems), AppConfiguration.minHistoryLength)
-
-    highDefaults.set(100_000, forKey: SettingsModel.Keys.maxHistoryItems)
-    let highSettings = SettingsModel(defaults: highDefaults)
-
-    XCTAssertEqual(highSettings.maxHistoryItems, AppConfiguration.maxHistoryLength)
-    XCTAssertEqual(highDefaults.integer(forKey: SettingsModel.Keys.maxHistoryItems), AppConfiguration.maxHistoryLength)
   }
 
   func testLimitAssignmentsAreClampedAndPersisted() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     var changes: [SettingsModel.Change] = []
     settings.observe { changes.append($0) }
@@ -407,11 +284,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testHistoryRetentionDefaultsToOneMonthAndPersists() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     var changes: [SettingsModel.Change] = []
     settings.observe { changes.append($0) }
@@ -429,11 +302,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testCustomCollectionsPersistWithNormalizedColors() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     var changes: [SettingsModel.Change] = []
     settings.observe { changes.append($0) }
@@ -453,11 +322,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   func testCustomCollectionsCanBeUpdatedAndDeleted() {
-    let suiteName = "com.clipbored.settingsmodel.\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defer {
-      defaults.removePersistentDomain(forName: suiteName)
-    }
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
 
     settings.ensureCollection(named: "Research Stack", colorHex: "#0A9EB8", icon: "book.closed.fill")

@@ -11,16 +11,7 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
   var onSelect: (Int, ClipboardSelectionMode) -> Void = { _, _ in }
   var onHover: (Int, NSPoint?) -> Bool = { _, _ in true }
   var onHoverExit: (Int) -> Void = { _ in }
-  var onMoveSelection: (Int) -> Void = { _ in }
-  var onExtendSelection: (Int) -> Void = { _ in }
-  var onVerticalNavigation: ((Int, Bool) -> Void)?
-  var onPageSelection: (Int) -> Void = { _ in }
-  var onPageExtendSelection: (Int) -> Void = { _ in }
-  var onSelectFirst: () -> Void = {}
-  var onSelectLast: () -> Void = {}
-  var onExtendSelectionToFirst: () -> Void = {}
-  var onExtendSelectionToLast: () -> Void = {}
-  var onSelectAll: () -> Void = {}
+  var onNavigate: (ClipboardCardNavigation) -> Void = { _ in }
   var onPasteboardWriters: (Int) -> [NSPasteboardWriting] = { _ in [] }
   var onStartSearch: (String) -> Void = { _ in }
   var onLiftStateChanged: (Bool) -> Void = { _ in }
@@ -216,7 +207,7 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
     }
     if relevantModifiers == .command {
       switch event.keyCode {
-      case 0: onSelectAll()
+      case 0: onNavigate(.all)
       case 5: onCommand(.showInClipboard)
       case 6: onCommand(.undoDelete)
       case 8: onCommand(.copy)
@@ -231,14 +222,14 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
     if relevantModifiers == .shift {
       switch event.keyCode {
       case 36, 76: onCommand(.pastePlainText)
-      case 115: onExtendSelectionToFirst()
-      case 116: onPageExtendSelection(-1)
-      case 119: onExtendSelectionToLast()
-      case 121: onPageExtendSelection(1)
-      case 123 where layout.usesGalleryStyle: onExtendSelection(-1)
-      case 124 where layout.usesGalleryStyle: onExtendSelection(1)
-      case 126: if let onVerticalNavigation { onVerticalNavigation(-1, true) } else { onExtendSelection(-1) }
-      case 125: if let onVerticalNavigation { onVerticalNavigation(1, true) } else { onExtendSelection(1) }
+      case 115: onNavigate(.endpoint(last: false, extend: true))
+      case 116: onNavigate(.page(-1, extend: true))
+      case 119: onNavigate(.endpoint(last: true, extend: true))
+      case 121: onNavigate(.page(1, extend: true))
+      case 123 where layout.usesGalleryStyle: onNavigate(.move(-1, extend: true))
+      case 124 where layout.usesGalleryStyle: onNavigate(.move(1, extend: true))
+      case 126: onNavigate(.vertical(-1, extend: true))
+      case 125: onNavigate(.vertical(1, extend: true))
       default: super.keyDown(with: event)
       }
       return
@@ -248,14 +239,14 @@ final class ClipboardItemCardView: NSView, NSDraggingSource {
     case 36, 76: onCommand(.paste)
     case 49: if canPreview { onCommand(.preview) } else { onCommand(.paste) }
     case 51, 117: onCommand(.delete)
-    case 115: onSelectFirst()
-    case 116: onPageSelection(-1)
-    case 119: onSelectLast()
-    case 121: onPageSelection(1)
-    case 123 where layout.usesGalleryStyle: onMoveSelection(-1)
-    case 124 where layout.usesGalleryStyle: onMoveSelection(1)
-    case 126: if let onVerticalNavigation { onVerticalNavigation(-1, false) } else { onMoveSelection(-1) }
-    case 125: if let onVerticalNavigation { onVerticalNavigation(1, false) } else { onMoveSelection(1) }
+    case 115: onNavigate(.endpoint(last: false, extend: false))
+    case 116: onNavigate(.page(-1, extend: false))
+    case 119: onNavigate(.endpoint(last: true, extend: false))
+    case 121: onNavigate(.page(1, extend: false))
+    case 123 where layout.usesGalleryStyle: onNavigate(.move(-1, extend: false))
+    case 124 where layout.usesGalleryStyle: onNavigate(.move(1, extend: false))
+    case 126: onNavigate(.vertical(-1, extend: false))
+    case 125: onNavigate(.vertical(1, extend: false))
     default: if let text = shelfSearchText(from: event) { onStartSearch(text) } else { super.keyDown(with: event) }
     }
   }

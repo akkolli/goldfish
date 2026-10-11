@@ -7,7 +7,6 @@ import XCTest
 /// Exercises the shipping clipboard, storage, search, transfer, and shelf paths
 /// together. Each workflow owns an isolated history and owns a private pasteboard.
 final class GoldfishWorkflowTests: ClipboardTestCase {
-  private var suite = ""
   private var directory: URL!
   private var defaults: UserDefaults!
   private var settings: SettingsModel!
@@ -17,13 +16,11 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
 
   override func setUpWithError() throws {
     _ = NSApplication.shared
-    suite = "Goldfish.Workflow.\(UUID().uuidString)"
-    defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-    defaults.removePersistentDomain(forName: suite)
-    directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true)
+    defaults = makeTestDefaults()
+    directory = try makeTempDirectory()
     settings = SettingsModel(defaults: defaults)
     settings.historyRetention = .forever
-    encryption = ClipboardEncryptionService(keyProvider: { SymmetricKey(data: Data(repeating: 0x47, count: 32)) })
+    encryption = testEncryption(byte: 71)
     cache = ClipboardCacheService(baseURL: directory, encryptionService: encryption)
     store = ClipboardStore(settings: settings, cacheService: cache, baseURL: directory, encryptionService: encryption)
 
@@ -36,8 +33,6 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
     cache = nil
     settings = nil
     encryption = nil
-    defaults.removePersistentDomain(forName: suite)
-    try? FileManager.default.removeItem(at: directory)
     try super.tearDownWithError()
   }
 
@@ -270,9 +265,9 @@ final class GoldfishWorkflowTests: ClipboardTestCase {
 
   private func item(_ text: String, kind: ClipboardItemKind = .text, sourceApp: String = "Workflow Tests") -> ClipboardItem {
     let now = Date()
-    return ClipboardItem(
-      id: UUID(), kind: kind, displayText: text, payload: text, payloadHash: UUID().uuidString, createdAt: now, lastUsedAt: now,
-      useCount: 0, sourceApp: sourceApp, imagePath: nil, thumbnailPath: nil)
+    return testItem(
+      kind: kind, payload: text, payloadHash: UUID().uuidString, createdAt: now, useCount: 0,
+      sourceApp: sourceApp)
   }
 
   private func copy(_ text: String) {

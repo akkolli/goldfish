@@ -5,19 +5,9 @@ import XCTest
 @testable import Goldfish
 
 final class ClipboardMonitorServiceTests: ClipboardTestCase {
-  private var tempURLs: [URL] = []
-  private var suiteNames: [String] = []
-
-  override func tearDown() {
-    tempURLs.forEach { try? FileManager.default.removeItem(at: $0) }
-    tempURLs.removeAll()
-    suiteNames.forEach { UserDefaults(suiteName: $0)?.removePersistentDomain(forName: $0) }
-    suiteNames.removeAll()
-    super.tearDown()
-  }
 
   func testStartupAndResumeDoNotCaptureEarlierClipboardContents() {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cache) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cache, settings: settings, frontmostApp: { (nil, nil) })
@@ -47,7 +37,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testConfidentialAndTransientClipboardMarkersNeverPersist() {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     settings.excludeSensitive = false
     settings.ignoredApps = []
     let (store, cache) = makeStoreAndCache(settings: settings)
@@ -66,7 +56,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testHexTextCapturesAsColorAndHonorsColorExclusion() {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cache) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cache, settings: settings, frontmostApp: { (nil, nil) })
@@ -89,7 +79,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowCapturesCodeSnippetAsCode() {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     settings.pruneDuplicates = false
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
@@ -113,7 +103,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowCapturesPDFAsRestorableAttachment() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -137,7 +127,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowCapturesAudioAsRestorableAttachment() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -161,7 +151,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowCapturesVideoAsRestorableAttachment() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -186,7 +176,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowCapturesColorAsRestorableSwatch() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -212,7 +202,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowCapturesMultipleFileReferencesAsOneRestorableItem() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -240,7 +230,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowPrefersFileReferenceOverStringFallback() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -262,7 +252,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowCapturesBareURLAsLink() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -283,7 +273,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowUsesPasteboardURLNameAsLinkTitle() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -310,7 +300,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowRejectsSensitiveDirectURLPasteboardObject() {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     settings.excludeSensitive = true
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
@@ -330,13 +320,13 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowCapturesImageWithRecognizedTextWhenSearchIsEnabled() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     settings.includeImageTextInSearch = true
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) },
       imageTextExtractor: { _ in "  Receipt total $42\nOrder 1001  " })
-    let image = makeImage(color: .systemOrange)
+    let image = testImage(color: .systemOrange)
     let captured = expectation(description: "image with recognized text captured")
 
     store.observeItems { items in
@@ -357,7 +347,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowPrefersRichTextOverPlainStringFallback() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -387,7 +377,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testPollNowCapturesHTMLClipboardDataAsRestorableRichText() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     let (store, cacheService) = makeStoreAndCache(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
@@ -420,12 +410,12 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testIgnoredImageKindDoesNotWriteCacheFiles() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     settings.ignoredItemKindsRaw = [ClipboardItemKind.image.rawValue]
     let (store, cacheService, baseURL) = makeStoreCacheAndBaseURL(settings: settings)
     let monitor = ClipboardMonitorService(
       pasteboard: pasteboard, store: store, cacheService: cacheService, settings: settings, frontmostApp: { (nil, nil) })
-    let image = makeImage(color: .systemOrange)
+    let image = testImage(color: .systemOrange)
 
     let pasteboard = self.pasteboard
     pasteboard.clearContents()
@@ -440,7 +430,7 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
   }
 
   func testIgnoredRichTextKindDoesNotWriteHTMLAttachmentFiles() throws {
-    let settings = SettingsModel(defaults: makeTestDefaults())
+    let settings = SettingsModel(defaults: makeTestDefaults(retention: .forever))
     settings.ignoredItemKindsRaw = [ClipboardItemKind.richText.rawValue]
     let (store, cacheService, baseURL) = makeStoreCacheAndBaseURL(settings: settings)
     let monitor = ClipboardMonitorService(
@@ -460,14 +450,6 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
     XCTAssertTrue(store.items.isEmpty)
     XCTAssertTrue(try attachmentFileURLs(in: baseURL).isEmpty)
     XCTAssertEqual(settings.captureStatusMessage, "Skipped: Rich Text items are ignored in capture settings.")
-  }
-
-  private func makeTestDefaults() -> UserDefaults {
-    let suiteName = "com.clipbored.testmonitor.\(UUID().uuidString)"
-    suiteNames.append(suiteName)
-    let defaults = UserDefaults(suiteName: suiteName)!
-    defaults.set(HistoryRetention.forever.rawValue, forKey: SettingsModel.Keys.historyRetention)
-    return defaults
   }
 
   private func makeStore(settings: SettingsModel) -> ClipboardStore { makeStoreAndCache(settings: settings).store }
@@ -512,13 +494,4 @@ final class ClipboardMonitorServiceTests: ClipboardTestCase {
     return try FileManager.default.contentsOfDirectory(at: attachmentDirectory, includingPropertiesForKeys: nil)
   }
 
-  private func makeImage(color: NSColor) -> NSImage {
-    let size = NSSize(width: 24, height: 24)
-    let image = NSImage(size: size)
-    image.lockFocus()
-    color.setFill()
-    NSRect(origin: .zero, size: size).fill()
-    image.unlockFocus()
-    return image
-  }
 }

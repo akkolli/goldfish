@@ -2,19 +2,13 @@ import AppKit
 import XCTest
 @testable import Goldfish
 
-final class ClipboardSoundServiceTests: XCTestCase {
-  private var suite: String!
+final class ClipboardSoundServiceTests: IsolatedTestCase {
   private var defaults: UserDefaults!
   private var settings: SettingsModel!
 
   override func setUpWithError() throws {
-    suite = "Goldfish.SoundTests.\(UUID().uuidString)"
-    defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+    defaults = makeTestDefaults()
     settings = SettingsModel(defaults: defaults)
-  }
-
-  override func tearDown() {
-    defaults.removePersistentDomain(forName: suite)
   }
 
   func testSoundPreferencesAreOptInPersistIndependentlyAndClampVolume() {

@@ -2,28 +2,11 @@ import Foundation
 import XCTest
 @testable import Goldfish
 
-final class ClipboardCloudSyncServiceTests: XCTestCase {
+final class ClipboardCloudSyncServiceTests: IsolatedTestCase {
   private var tempRoot: URL!
-  private var defaultsSuites: [String] = []
-
   override func setUpWithError() throws {
     try super.setUpWithError()
-    tempRoot = FileManager.default.temporaryDirectory
-      .appendingPathComponent("clipbored-cloud-sync-tests", isDirectory: true)
-      .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
-  }
-
-  override func tearDownWithError() throws {
-    for suite in defaultsSuites {
-      UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
-    }
-    if let tempRoot {
-      try? FileManager.default.removeItem(at: tempRoot)
-    }
-    defaultsSuites = []
-    tempRoot = nil
-    try super.tearDownWithError()
+    tempRoot = try makeTempDirectory()
   }
 
   func testUnavailableContainerReportsStatusAndThrows() {
@@ -100,11 +83,7 @@ final class ClipboardCloudSyncServiceTests: XCTestCase {
   }
 
   private func makeStoreEnvironment(named name: String) throws -> (settings: SettingsModel, store: ClipboardStore) {
-    let suiteName = "com.clipbored.cloudsync.\(name).\(UUID().uuidString)"
-    defaultsSuites.append(suiteName)
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defaults.removePersistentDomain(forName: suiteName)
-
+    let defaults = makeTestDefaults()
     let settings = SettingsModel(defaults: defaults)
     settings.maxHistoryItems = 50
     settings.historyRetention = .forever
@@ -121,20 +100,7 @@ final class ClipboardCloudSyncServiceTests: XCTestCase {
   }
 
   private func makeItem(_ payload: String, created: Date) -> ClipboardItem {
-    ClipboardItem(
-      id: UUID(),
-      kind: .text,
-      displayText: payload,
-      payload: payload,
-      payloadHash: String(payload.hashValue),
-      createdAt: created,
-      lastUsedAt: created,
-      useCount: 1,
-      sourceApp: nil,
-      imagePath: nil,
-      thumbnailPath: nil,
-      isPinned: false
-    )
+    testItem(payload: payload, payloadHash: String(payload.hashValue), createdAt: created)
   }
 
   private func posixPermissions(_ url: URL) throws -> Int {

@@ -3,19 +3,16 @@ import CryptoKit
 import XCTest
 @testable import Goldfish
 
-final class ClipboardCacheServiceTests: XCTestCase {
-  private var tempURLs: [URL] = []
+final class ClipboardCacheServiceTests: IsolatedTestCase {
 
   override func tearDown() {
-    tempURLs.forEach { try? FileManager.default.removeItem(at: $0) }
-    tempURLs.removeAll()
     try? FileManager.default.removeItem(at: temporaryPreviewRoot())
     super.tearDown()
   }
 
   func testPurgeRemovesOnlyThumbnailsOverByteLimit() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: noOpEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption())
     let first = try XCTUnwrap(cacheService.cacheImage(makeImage(color: .systemRed), id: UUID()))
     let second = try XCTUnwrap(cacheService.cacheImage(makeImage(color: .systemBlue), id: UUID()))
 
@@ -35,7 +32,7 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
   func testClearCacheRemovesOnlyImageCacheFiles() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: noOpEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption())
     let image = try XCTUnwrap(cacheService.cacheImage(makeImage(color: .systemGreen), id: UUID()))
     let pdfPath = try XCTUnwrap(cacheService.cachePDF(Data("%PDF-1.4\n%%EOF".utf8), id: UUID()))
     let pdfItem = pdfItem(path: pdfPath)
@@ -58,7 +55,7 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
   func testClearCacheRemovesLegacyThumbnailWithoutDeletingLegacyFullImage() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: noOpEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption())
     let imageDirectory = baseURL.appendingPathComponent("images", isDirectory: true)
     let fullURL = imageDirectory.appendingPathComponent("legacy.png")
     let thumbURL = imageDirectory.appendingPathComponent("thumb-legacy.png")
@@ -75,7 +72,7 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
   func testImageCacheFilesAreEncryptedAndLoadable() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let image = makeImage(color: .systemPurple)
 
     let paths = try XCTUnwrap(cacheService.cacheImage(image, id: UUID()))
@@ -87,13 +84,13 @@ final class ClipboardCacheServiceTests: XCTestCase {
     XCTAssertNil(NSImage(data: rawFull))
     XCTAssertNotNil(cacheService.image(for: paths.full))
     XCTAssertNotNil(cacheService.image(for: paths.thumb))
-    XCTAssertEqual(try posixPermissions(URL(fileURLWithPath: paths.full)), 0o600)
-    XCTAssertEqual(try posixPermissions(URL(fileURLWithPath: paths.thumb)), 0o600)
+    XCTAssertEqual(try testPermissions(URL(fileURLWithPath: paths.full)), 0o600)
+    XCTAssertEqual(try testPermissions(URL(fileURLWithPath: paths.thumb)), 0o600)
   }
 
   func testPreviewThumbnailUsesExistingFilePreview() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: noOpEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption())
     let imageURL = baseURL.appendingPathComponent("Copied Image.png")
     let imageData = try XCTUnwrap(makeImage(color: .systemOrange).pngData())
     try imageData.write(to: imageURL)
@@ -105,7 +102,7 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
   func testPreviewThumbnailUsesManagedPDFPreviewFallback() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let pdfData = try makePDFData()
     let path = try XCTUnwrap(cacheService.cachePDF(pdfData, id: UUID()))
 
@@ -118,7 +115,7 @@ final class ClipboardCacheServiceTests: XCTestCase {
     var providerURLs: [URL] = []
     let cacheService = ClipboardCacheService(
       baseURL: baseURL,
-      encryptionService: fixedEncryptionService(),
+      encryptionService: testEncryption(byte: 7),
       videoThumbnailProvider: { url in
         providerURLs.append(url)
         XCTAssertEqual(url.pathExtension, "mp4")
@@ -140,7 +137,7 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
   func testPDFCacheFilesAreEncryptedAndReadable() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let pdfData = Data("%PDF-1.4\nclipbored\n%%EOF".utf8)
 
     let path = try XCTUnwrap(cacheService.cachePDF(pdfData, id: UUID()))
@@ -149,12 +146,12 @@ final class ClipboardCacheServiceTests: XCTestCase {
     XCTAssertTrue(ClipboardEncryptionService.isProtected(rawPDF))
     XCTAssertNotEqual(rawPDF, pdfData)
     XCTAssertEqual(cacheService.data(for: path), pdfData)
-    XCTAssertEqual(try posixPermissions(URL(fileURLWithPath: path)), 0o600)
+    XCTAssertEqual(try testPermissions(URL(fileURLWithPath: path)), 0o600)
   }
 
   func testAudioCacheFilesAreEncryptedAndReadable() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let audioData = Data([0, 1, 2, 3, 5, 8, 13])
 
     let path = try XCTUnwrap(cacheService.cacheAudio(audioData, id: UUID()))
@@ -163,12 +160,12 @@ final class ClipboardCacheServiceTests: XCTestCase {
     XCTAssertTrue(ClipboardEncryptionService.isProtected(rawAudio))
     XCTAssertNotEqual(rawAudio, audioData)
     XCTAssertEqual(cacheService.data(for: path), audioData)
-    XCTAssertEqual(try posixPermissions(URL(fileURLWithPath: path)), 0o600)
+    XCTAssertEqual(try testPermissions(URL(fileURLWithPath: path)), 0o600)
   }
 
   func testVideoCacheFilesAreEncryptedAndReadable() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let videoData = Data([0, 0, 0, 24, 102, 116, 121, 112, 109, 112, 52, 50])
 
     let path = try XCTUnwrap(cacheService.cacheVideo(videoData, id: UUID(), fileExtension: "mp4"))
@@ -177,12 +174,12 @@ final class ClipboardCacheServiceTests: XCTestCase {
     XCTAssertTrue(ClipboardEncryptionService.isProtected(rawVideo))
     XCTAssertNotEqual(rawVideo, videoData)
     XCTAssertEqual(cacheService.data(for: path), videoData)
-    XCTAssertEqual(try posixPermissions(URL(fileURLWithPath: path)), 0o600)
+    XCTAssertEqual(try testPermissions(URL(fileURLWithPath: path)), 0o600)
   }
 
   func testRichTextCacheFilesAreEncryptedAndReadable() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let rtfData = Data("{\\rtf1\\ansi Goldfish}".utf8)
 
     let path = try XCTUnwrap(cacheService.cacheRichText(rtfData, id: UUID()))
@@ -191,12 +188,12 @@ final class ClipboardCacheServiceTests: XCTestCase {
     XCTAssertTrue(ClipboardEncryptionService.isProtected(rawRTF))
     XCTAssertNotEqual(rawRTF, rtfData)
     XCTAssertEqual(cacheService.data(for: path), rtfData)
-    XCTAssertEqual(try posixPermissions(URL(fileURLWithPath: path)), 0o600)
+    XCTAssertEqual(try testPermissions(URL(fileURLWithPath: path)), 0o600)
   }
 
   func testLegacyManagedSidecarIsEncryptedAfterRead() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let attachmentDirectory = baseURL.appendingPathComponent("attachments", isDirectory: true)
     try FileManager.default.createDirectory(at: attachmentDirectory, withIntermediateDirectories: true)
     let url = attachmentDirectory.appendingPathComponent("\(UUID().uuidString).pdf")
@@ -212,15 +209,15 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
   func testTemporaryReadableURLWritesPrivateCopyAndCleanupRemovesIt() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let pdfData = Data("%PDF-1.4\ntemporary preview\n%%EOF".utf8)
     let path = try XCTUnwrap(cacheService.cachePDF(pdfData, id: UUID()))
 
     let previewURL = try XCTUnwrap(cacheService.temporaryReadableURL(for: pdfItem(path: path)))
 
     XCTAssertEqual(try Data(contentsOf: previewURL), pdfData)
-    XCTAssertEqual(try posixPermissions(previewURL.deletingLastPathComponent()), 0o700)
-    XCTAssertEqual(try posixPermissions(previewURL), 0o600)
+    XCTAssertEqual(try testPermissions(previewURL.deletingLastPathComponent()), 0o700)
+    XCTAssertEqual(try testPermissions(previewURL), 0o600)
 
     cacheService.clearTemporaryPreviews(wait: true)
     XCTAssertFalse(FileManager.default.fileExists(atPath: previewURL.path))
@@ -228,7 +225,7 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
   func testTemporaryReadableURLWorksForAudio() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let audioData = Data([9, 8, 7, 6])
     let path = try XCTUnwrap(cacheService.cacheAudio(audioData, id: UUID()))
 
@@ -236,12 +233,12 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
     XCTAssertEqual(try Data(contentsOf: previewURL), audioData)
     XCTAssertEqual(previewURL.pathExtension, "sound")
-    XCTAssertEqual(try posixPermissions(previewURL), 0o600)
+    XCTAssertEqual(try testPermissions(previewURL), 0o600)
   }
 
   func testTemporaryReadableURLWorksForVideo() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let videoData = Data([0, 0, 0, 24, 102, 116, 121, 112, 109, 112, 52, 50])
     let path = try XCTUnwrap(cacheService.cacheVideo(videoData, id: UUID(), fileExtension: "mp4"))
 
@@ -249,12 +246,12 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
     XCTAssertEqual(try Data(contentsOf: previewURL), videoData)
     XCTAssertEqual(previewURL.pathExtension, "mp4")
-    XCTAssertEqual(try posixPermissions(previewURL), 0o600)
+    XCTAssertEqual(try testPermissions(previewURL), 0o600)
   }
 
   func testTemporaryReadableURLWorksForRichText() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: fixedEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption(byte: 7))
     let rtfData = Data("{\\rtf1\\ansi Temporary Rich Text}".utf8)
     let path = try XCTUnwrap(cacheService.cacheRichText(rtfData, id: UUID()))
 
@@ -262,25 +259,25 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
     XCTAssertEqual(try Data(contentsOf: previewURL), rtfData)
     XCTAssertEqual(previewURL.pathExtension, "rtf")
-    XCTAssertEqual(try posixPermissions(previewURL), 0o600)
+    XCTAssertEqual(try testPermissions(previewURL), 0o600)
   }
 
   func testTemporaryPreviewURLWritesTextFile() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: noOpEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption())
     let item = textItem("Quick Look text")
 
     let previewURL = try XCTUnwrap(cacheService.temporaryPreviewURL(for: item))
 
     XCTAssertEqual(previewURL.pathExtension, "txt")
     XCTAssertEqual(try String(contentsOf: previewURL), "Quick Look text")
-    XCTAssertEqual(try posixPermissions(previewURL.deletingLastPathComponent()), 0o700)
-    XCTAssertEqual(try posixPermissions(previewURL), 0o600)
+    XCTAssertEqual(try testPermissions(previewURL.deletingLastPathComponent()), 0o700)
+    XCTAssertEqual(try testPermissions(previewURL), 0o600)
   }
 
   func testTemporaryPreviewURLWritesWebLocationFile() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: noOpEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption())
     let item = urlItem("https://example.com/releases")
 
     let previewURL = try XCTUnwrap(cacheService.temporaryPreviewURL(for: item))
@@ -291,27 +288,18 @@ final class ClipboardCacheServiceTests: XCTestCase {
 
     XCTAssertEqual(previewURL.pathExtension, "webloc")
     XCTAssertEqual(plist["URL"], "https://example.com/releases")
-    XCTAssertEqual(try posixPermissions(previewURL), 0o600)
+    XCTAssertEqual(try testPermissions(previewURL), 0o600)
   }
 
   func testTemporaryPreviewURLReturnsExistingFileURL() throws {
     let baseURL = try makeTempDirectory()
-    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: noOpEncryptionService())
+    let cacheService = ClipboardCacheService(baseURL: baseURL, encryptionService: testEncryption())
     let fileURL = baseURL.appendingPathComponent("report.txt")
     try Data("Report".utf8).write(to: fileURL)
 
     let previewURL = try XCTUnwrap(cacheService.temporaryPreviewURL(for: fileItem(path: fileURL.path)))
 
     XCTAssertEqual(previewURL.standardizedFileURL, fileURL.standardizedFileURL)
-  }
-
-  private func makeTempDirectory() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("clipboredtests", isDirectory: true)
-      .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-    tempURLs.append(url)
-    return url
   }
 
   private func imageCacheFileURLs(in baseURL: URL) throws -> [URL] {
@@ -325,115 +313,41 @@ final class ClipboardCacheServiceTests: XCTestCase {
   }
 
   private func textItem(_ text: String) -> ClipboardItem {
-    ClipboardItem(
-      id: UUID(),
-      kind: .text,
-      displayText: text,
-      payload: text,
-      payloadHash: "hash",
-      createdAt: Date(),
-      lastUsedAt: Date(),
-      useCount: 0,
-      sourceApp: nil,
-      imagePath: nil,
-      thumbnailPath: nil
-    )
+    testItem(payload: text, payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(), useCount: 0)
   }
 
   private func urlItem(_ url: String) -> ClipboardItem {
-    ClipboardItem(
-      id: UUID(),
-      kind: .url,
-      displayText: url,
-      payload: url,
-      payloadHash: "hash",
-      createdAt: Date(),
-      lastUsedAt: Date(),
-      useCount: 0,
-      sourceApp: nil,
-      imagePath: nil,
-      thumbnailPath: nil
-    )
+    testItem(kind: .url, payload: url, payloadHash: "hash", createdAt: Date(), lastUsedAt: Date(), useCount: 0)
   }
 
   private func pdfItem(path: String) -> ClipboardItem {
-    ClipboardItem(
-      id: UUID(),
-      kind: .pdf,
-      displayText: "PDF",
-      payload: path,
-      payloadHash: "hash",
-      createdAt: Date(),
-      lastUsedAt: Date(),
-      useCount: 0,
-      sourceApp: nil,
-      imagePath: nil,
-      thumbnailPath: nil
-    )
+    testItem(
+      kind: .pdf, displayText: "PDF", payload: path, payloadHash: "hash", createdAt: Date(),
+      lastUsedAt: Date(), useCount: 0)
   }
 
   private func fileItem(path: String) -> ClipboardItem {
-    ClipboardItem(
-      id: UUID(),
-      kind: .file,
-      displayText: "File",
-      payload: path,
-      payloadHash: "hash",
-      createdAt: Date(),
-      lastUsedAt: Date(),
-      useCount: 0,
-      sourceApp: nil,
-      imagePath: nil,
-      thumbnailPath: nil
-    )
+    testItem(
+      kind: .file, displayText: "File", payload: path, payloadHash: "hash", createdAt: Date(),
+      lastUsedAt: Date(), useCount: 0)
   }
 
   private func audioItem(path: String) -> ClipboardItem {
-    ClipboardItem(
-      id: UUID(),
-      kind: .audio,
-      displayText: "Audio",
-      payload: path,
-      payloadHash: "hash",
-      createdAt: Date(),
-      lastUsedAt: Date(),
-      useCount: 0,
-      sourceApp: nil,
-      imagePath: nil,
-      thumbnailPath: nil
-    )
+    testItem(
+      kind: .audio, displayText: "Audio", payload: path, payloadHash: "hash", createdAt: Date(),
+      lastUsedAt: Date(), useCount: 0)
   }
 
   private func videoItem(path: String) -> ClipboardItem {
-    ClipboardItem(
-      id: UUID(),
-      kind: .video,
-      displayText: "Video",
-      payload: path,
-      payloadHash: "hash",
-      createdAt: Date(),
-      lastUsedAt: Date(),
-      useCount: 0,
-      sourceApp: nil,
-      imagePath: nil,
-      thumbnailPath: nil
-    )
+    testItem(
+      kind: .video, displayText: "Video", payload: path, payloadHash: "hash", createdAt: Date(),
+      lastUsedAt: Date(), useCount: 0)
   }
 
   private func richTextItem(path: String) -> ClipboardItem {
-    ClipboardItem(
-      id: UUID(),
-      kind: .richText,
-      displayText: "Rich Text",
-      payload: path,
-      payloadHash: "hash",
-      createdAt: Date(),
-      lastUsedAt: Date(),
-      useCount: 0,
-      sourceApp: nil,
-      imagePath: nil,
-      thumbnailPath: nil
-    )
+    testItem(
+      kind: .richText, displayText: "Rich Text", payload: path, payloadHash: "hash", createdAt: Date(),
+      lastUsedAt: Date(), useCount: 0)
   }
 
   private func temporaryPreviewRoot() -> URL {
@@ -470,17 +384,4 @@ final class ClipboardCacheServiceTests: XCTestCase {
     return data as Data
   }
 
-  private func posixPermissions(_ url: URL) throws -> Int {
-    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-    return try XCTUnwrap(attributes[.posixPermissions] as? Int) & 0o777
-  }
-
-  private func noOpEncryptionService() -> ClipboardEncryptionService {
-    ClipboardEncryptionService(keyProvider: { nil })
-  }
-
-  private func fixedEncryptionService(byte: UInt8 = 7) -> ClipboardEncryptionService {
-    let keyData = Data(repeating: byte, count: 32)
-    return ClipboardEncryptionService(keyProvider: { SymmetricKey(data: keyData) })
-  }
 }
