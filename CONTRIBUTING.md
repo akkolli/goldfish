@@ -33,7 +33,7 @@ Run the full local check before opening a pull request:
 - Prefer behavior-level tests. Use the smoke checklist for visual layout instead of adding production debug accessors for private UI details.
 - Extend `GoldfishWorkflowTests` when a user journey crosses capture, storage, search, transfer, shelf, or Settings. Keep focused tests for failure paths and formats that the workflow tests cannot safely exercise.
 - Format application Swift consistently with `xcrun swift-format format --configuration .swift-format --in-place --recursive Sources/Goldfish`.
-- Put card actions in `ClipboardCardCommand` and its shared handler; keep ordinary settings reads/writes together in a typed binding.
+- Put card actions in `ClipCommand` and its shared handler; keep ordinary settings reads/writes together in a typed binding.
 - Keep geometry, appearance, and field-editor behavior in their named components. Remove obsolete paths when a design is retired.
 - Report source and release size with `python3 scripts/project-metrics.py`; do not count cache removal as code reduction.
 - Keep UI native and compact. This is a utility, not a marketing surface.
@@ -49,6 +49,6 @@ Run the full local check before opening a pull request:
 
 ## One-developer workflow
 
-Use Python 3.9+ and Xcode command line tools with Swift 5.9+. The [documentation index](docs/README.md) separates current guidance from historical reports. Keep data mutations in `ClipboardStore`, shelf filter transitions in `ClipboardShelfState`, and archive/backup serialization in `ClipboardDataCoordinator`; views present outcomes rather than owning another persistence path. Prefer batch APIs and shared test fixtures. Preserve behavior scenarios and assertions when merging tests.
+Use Python 3.9+ and Xcode command line tools with Swift 5.9+. The [documentation index](docs/README.md) separates current guidance from historical reports. Keep data mutations in `HistoryStore`, shelf filter transitions in `ShelfState`, and archive/backup serialization in `DataCoordinator`; views present outcomes rather than owning another persistence path. Prefer batch APIs and shared test fixtures. Preserve behavior scenarios and assertions when merging tests.
 
 Before installation or release, run `scripts/check.sh`, commit on a branch that includes current main, and fast-forward a clean main checkout. Publish main and preserve the archive branch on the working remote. GitHub macOS CI runs the same checks. Never force-push production or merge the legacy archive as the baseline. Ignored local `plan/` notes and generated artifacts are not shared project state.

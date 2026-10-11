@@ -52,12 +52,6 @@ enum CodeSnippetPayload {
     return "\(language) Snippet"
   }
 
-  static func previewText(from value: String, maxLines: Int = 4) -> String {
-    let lines = value.components(separatedBy: .newlines).map { $0.clipboardTrimmed }.filter { !$0.isEmpty && $0 != "```" }
-    let preview = lines.prefix(maxLines).joined(separator: " ")
-    return preview.isEmpty ? "Code snippet" : String(preview.prefix(180))
-  }
-
   private static func containsCodeKeyword(_ value: String) -> Bool {
     value.range(
       of:

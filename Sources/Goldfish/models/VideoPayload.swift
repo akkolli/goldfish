@@ -46,9 +46,4 @@ enum VideoPayload {
     let value = URL(fileURLWithPath: path).pathExtension.clipboardTrimmed
     return value.isEmpty ? "mov" : value.lowercased()
   }
-
-  static func kindText(from path: String) -> String {
-    let value = fileExtension(from: path)
-    return value.isEmpty ? "Video" : value.uppercased()
-  }
 }

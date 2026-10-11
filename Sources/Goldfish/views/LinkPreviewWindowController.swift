@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-final class LinkPreviewWindowController: ClipboardAuxiliaryWindowController, WKNavigationDelegate {
+final class LinkPreviewWindowController: PreviewController, WKNavigationDelegate {
   enum NavigationDecision: Equatable {
     case allow
     case openExternally
@@ -43,7 +43,7 @@ final class LinkPreviewWindowController: ClipboardAuxiliaryWindowController, WKN
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
 
     webView = WKWebView(frame: .zero, configuration: configuration)
-    let window = ClipboardPreviewPanel(
+    let window = PreviewPanel(
       contentRect: NSRect(x: 0, y: 0, width: Metrics.minimumWidth, height: Metrics.preferredHeight),
       styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel], backing: .buffered, defer: false)
     window.title = "Link Preview"
@@ -143,19 +143,18 @@ final class LinkPreviewWindowController: ClipboardAuxiliaryWindowController, WKN
     titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
     addressLabel.font = .systemFont(ofSize: 11)
-    addressLabel.textColor = ClipboardShelfStyle.secondaryText
+    addressLabel.textColor = ShelfStyle.secondaryText
     addressLabel.lineBreakMode = .byTruncatingMiddle
     addressLabel.maximumNumberOfLines = 1
     addressLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
     let controls = NativeUI.stack(
       [
-      configuredButton(backButton, symbol: "chevron.left", toolTip: "Back", action: #selector(goBack)),
-      configuredButton(forwardButton, symbol: "chevron.right", toolTip: "Forward", action: #selector(goForward)),
-      configuredButton(reloadButton, symbol: "arrow.clockwise", toolTip: "Reload", action: #selector(reload)),
-      configuredButton(openExternalButton, symbol: "arrow.up.right.square", toolTip: "Open in Browser", action: #selector(openInBrowser)),
-    ],
-      axis: .horizontal, alignment: .centerY, spacing: 6)
+        configuredButton(backButton, symbol: "chevron.left", toolTip: "Back", action: #selector(goBack)),
+        configuredButton(forwardButton, symbol: "chevron.right", toolTip: "Forward", action: #selector(goForward)),
+        configuredButton(reloadButton, symbol: "arrow.clockwise", toolTip: "Reload", action: #selector(reload)),
+        configuredButton(openExternalButton, symbol: "arrow.up.right.square", toolTip: "Open in Browser", action: #selector(openInBrowser)),
+      ], axis: .horizontal, alignment: .centerY, spacing: 6)
     controls.translatesAutoresizingMaskIntoConstraints = false
 
     progressIndicator.isIndeterminate = false
@@ -213,7 +212,7 @@ final class LinkPreviewWindowController: ClipboardAuxiliaryWindowController, WKN
     button.imageScaling = .scaleProportionallyDown
     button.isBordered = false
     button.wantsLayer = true
-    button.layer?.cornerRadius = ClipboardShelfStyle.controlRadius
+    button.layer?.cornerRadius = ShelfStyle.controlRadius
     button.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
     button.contentTintColor = .labelColor
     button.toolTip = toolTip
@@ -221,8 +220,7 @@ final class LinkPreviewWindowController: ClipboardAuxiliaryWindowController, WKN
     button.target = self
     button.action = action
     button.translatesAutoresizingMaskIntoConstraints = false
-    button.widthAnchor.constraint(equalToConstant: 32).isActive = true
-    button.heightAnchor.constraint(equalToConstant: 32).isActive = true
+    button.constrainSize(width: 32, height: 32)
     return button
   }
 

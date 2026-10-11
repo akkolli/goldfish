@@ -31,3 +31,7 @@ plan/
 
 # Python build-tool caches
 __pycache__/
+
+# Generated LLVM test coverage profiles
+*.profraw
+*.profdata

@@ -13,13 +13,9 @@ final class SettingsPageScrollView: NSScrollView {
     page.translatesAutoresizingMaskIntoConstraints = false
     pageWidth = page.widthAnchor.constraint(equalToConstant: 536)
     super.init(frame: .zero)
-    hasVerticalScroller = true
-    hasHorizontalScroller = false
-    autohidesScrollers = true
-    drawsBackground = false
     let document = TopAlignedSettingsDocumentView()
     document.addSubview(page)
-    documentView = document
+    configure(document: document, vertical: true, autohides: true)
     NSLayoutConstraint.activate([
       pageWidth, page.leadingAnchor.constraint(equalTo: document.leadingAnchor), page.topAnchor.constraint(equalTo: document.topAnchor),
     ])
@@ -59,7 +55,7 @@ final class SettingsSectionView: NSView {
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    layer?.cornerRadius = ClipboardShelfStyle.cardRadius
+    layer?.cornerRadius = ShelfStyle.cardRadius
     layer?.borderWidth = 1
   }
 
@@ -68,7 +64,7 @@ final class SettingsSectionView: NSView {
 
   override func updateLayer() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
-      layer?.backgroundColor = ClipboardShelfStyle.cardBackground.cgColor
+      layer?.backgroundColor = ShelfStyle.cardBackground.cgColor
       layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
     }
   }

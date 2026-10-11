@@ -40,4 +40,4 @@ Goldfish uses a vertical shelf, symbol navigation for destinations, and adaptive
 
 ## Verification
 
-The optional horizontal layout remains available in Settings, but is not the default or the primary design target. Geometry, scope recovery, card reuse, viewport preservation, selection/AX behavior, context menus, sheets, settings layout, and contrast have automated coverage. AppKit fixtures cover both appearances, vertical widths, larger text, selection, filtering, paused capture, empty states, Settings, and onboarding. VoiceOver, physical multi-display/Spaces behavior, older macOS releases, and runtime animation quality still require live release checks; see [SMOKE_TEST.md](SMOKE_TEST.md).
+The optional horizontal layout remains available in Settings, but is not the default or the primary design target. The critical-path suite checks shelf cards, attached composers and menus, privacy, focus ownership, and closing in both layouts. Detailed geometry, appearance, scrollers, accessibility, Settings, onboarding, physical multi-display/Spaces behavior, older macOS releases, and animation quality require the live release checks in [SMOKE_TEST.md](SMOKE_TEST.md).

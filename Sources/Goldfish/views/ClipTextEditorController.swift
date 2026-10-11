@@ -1,6 +1,6 @@
 import AppKit
 
-final class ClipTextEditorController: NSObject, NSTextViewDelegate {
+final class ClipTextEditorController: AttachedEditorController, NSTextViewDelegate {
   private enum Metrics {
     static let compactEditorHeight: CGFloat = 44
     static let maximumEditorHeight: CGFloat = 228
@@ -9,28 +9,22 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
     static let errorHeight: CGFloat = 36
   }
 
-  let window: ClipEditorPanel
-  var isPresented: Bool { window.isVisible }
   private let editor: NSTextView
-  private weak var parentWindow: NSWindow?
-  private weak var anchorView: NSView?
-  private var isFinished = false
   private var editorHeightConstraint: NSLayoutConstraint!
   private var editorHeight: CGFloat
   private var isShowingError = false
   private let statusLabel = NSTextField(wrappingLabelWithString: "")
-  private let saveButton: ClipboardToolbarIconButton
+  private let saveButton: ShelfIconButton
   private let onSave: (String) -> String?
-  private let onFinish: () -> Void
 
   init(title: String, editor: NSTextView, onSave: @escaping (String) -> String?, onFinish: @escaping () -> Void) {
     self.editor = editor
     editorHeight = Self.preferredEditorHeight(for: editor)
     self.onSave = onSave
-    self.onFinish = onFinish
-    saveButton = ClipboardToolbarIconButton(title: "Save", target: nil, action: nil)
-    window = ClipEditorPanel(title: title, size: NSSize(width: 300, height: editorHeight + Metrics.chromeHeight))
-    super.init()
+    saveButton = ShelfIconButton(title: "Save", target: nil, action: nil)
+    super.init(
+      window: ClipEditorPanel(title: title, size: NSSize(width: 300, height: editorHeight + Metrics.chromeHeight)), position: .text,
+      onFinish: onFinish)
 
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
@@ -42,7 +36,7 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
     let heading = NativeUI.label(
       isCreating ? "New clip" : "Edit clip", font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
 
-    let cancelButton = ClipboardToolbarIconButton(title: "Cancel", target: self, action: #selector(cancel))
+    let cancelButton = ShelfIconButton(title: "Cancel", target: self, action: #selector(cancel))
     cancelButton.keyEquivalent = "\u{1b}"
     saveButton.target = self
     saveButton.action = #selector(save)
@@ -56,20 +50,13 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
     let divider = NSBox()
     divider.boxType = .separator
     let scroll = NSScrollView()
-    scroll.hasVerticalScroller = true
-    scroll.autohidesScrollers = true
-    scroll.scrollerStyle = .overlay
-    scroll.hasHorizontalScroller = false
-    scroll.borderType = .noBorder
-    scroll.drawsBackground = false
-    scroll.contentView.drawsBackground = false
     editor.drawsBackground = false
     editor.font = .systemFont(ofSize: 14)
     editor.textColor = .textColor
     editor.insertionPointColor = .controlAccentColor
     editor.textContainerInset = NSSize(width: 0, height: 4)
     editor.textContainer?.lineFragmentPadding = 0
-    scroll.documentView = editor
+    scroll.configure(document: editor, vertical: true, autohides: true, style: .overlay, border: .noBorder, clipBackground: false)
 
     statusLabel.font = .systemFont(ofSize: 12)
     statusLabel.textColor = .systemRed
@@ -105,37 +92,10 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
     validate()
   }
 
-  func show(relativeTo parent: NSWindow, anchoredTo anchor: NSView?) {
-    parentWindow = parent
-    anchorView = anchor
+  override func prepareForPresentation(relativeTo parent: NSWindow) {
     window.setContentSize(NSSize(width: min(300, parent.frame.width - 20), height: sheetHeight))
     window.contentView?.layoutSubtreeIfNeeded()
     updateEditorHeight()
-    positionNearAnchor()
-    window.attachToShelf(parent)
-    window.makeKeyAndOrderFront(nil)
-    window.makeFirstResponder(editor)
-  }
-
-  func suspend() {
-    guard isPresented else { return }
-    window.detachFromShelf()
-  }
-
-  private func positionNearAnchor() {
-    guard let parentWindow else { return }
-    let parent = parentWindow.frame
-    let screen = parentWindow.screen?.visibleFrame ?? parent
-    let buttonRect = anchorView?.convert(anchorView?.bounds ?? .zero, to: nil)
-    let anchorPoint = parentWindow.convertPoint(
-      toScreen: NSPoint(x: buttonRect?.maxX ?? parentWindow.frame.width - 24, y: buttonRect?.minY ?? parentWindow.frame.height - 52))
-    let width = window.frame.width
-    let height = window.frame.height
-    let left = max(parent.minX + 8, screen.minX + 8)
-    let right = min(parent.maxX - width - 8, screen.maxX - width - 8)
-    let x = max(left, min(anchorPoint.x - width + 14, max(left, right)))
-    let y = max(screen.minY + 8, min(anchorPoint.y - height - 6, screen.maxY - height - 8))
-    window.setFrameOrigin(NSPoint(x: x, y: y))
   }
 
   func textDidChange(_ notification: Notification) {
@@ -171,7 +131,7 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
 
   private func validate() {
     saveButton.isEnabled = !editor.string.clipboardTrimmed.isEmpty
-    saveButton.contentTintColor = saveButton.isEnabled ? ClipboardShelfStyle.brandAccent : .tertiaryLabelColor
+    saveButton.contentTintColor = saveButton.isEnabled ? ShelfStyle.brandAccent : .tertiaryLabelColor
     saveButton.needsDisplay = true
     statusLabel.isHidden = true
     statusLabel.stringValue = ""
@@ -197,10 +157,4 @@ final class ClipTextEditorController: NSObject, NSTextViewDelegate {
 
   @objc private func cancel() { dismiss() }
 
-  func dismiss() {
-    guard !isFinished else { return }
-    isFinished = true
-    window.detachFromShelf()
-    onFinish()
-  }
 }

@@ -44,15 +44,15 @@ Use this checklist before a release or after changes to the shelf, pasteboard, s
 11. Double-click a card and confirm paste or copy fallback occurs without creating a duplicate history item.
 12. Confirm cards show actual copied text, optional custom titles, images, document previews, and readable link/media fallbacks. Missing source apps must not display `Unknown`.
 13. On multiple displays and Spaces, confirm the shortcut opens on the pointer's active display/Space and the menu-bar icon opens on its display. Verify both left and right placement in Settings > General. Check the optional Horizontal shelf, then return to Vertical shelf.
-14. Type `p` and confirm it searches instead of pinning. Command-P toggles pinning. Command-N or More Actions > New Text Clip creates a note without overwriting the system clipboard; inside a Pinboard the new note belongs to that board.
+14. Type `p` and confirm it searches instead of pinning. Command-P toggles pinning. Command-N or the pencil button creates a note without overwriting the system clipboard; inside a Pinboard the new note belongs to that board.
 15. Test every shelf width and larger text with legacy and overlay scrollbars. Card corners and text must fit the actual clip width. Browse older clips and copy again: the clip under the viewport must remain stable, including when a different-height clip is inserted. Search changes must reveal their results at the top.
-16. More Actions > Clear History must offer a confirmation with Cancel as the default; ordinary cleanup keeps pinned and collected clips.
+16. The trash button offers 1 day, 1 week, and All time cleanup. Pinboard deletion and the full history reset in Settings require confirmation with Cancel as the default; ordinary cleanup keeps pinned and collected clips.
 
 ## Hover, Scrollbars, And Filter Menus
 
 1. Move between adjacent cards: the hovered card springs forward and neighboring cards recede slightly. Selection, hit targets, row positions, and scroll offset must remain stable. Scroll or browse with the keyboard to clear hover. With Reduce Motion, cards remain still.
 2. Check overlay and Always Show Scroll Bars. The narrow rounded thumb must remain draggable and accessible, with no contrasting track or clipped card corners. Check narrow/wide shelves and light/dark appearances.
-3. Open Library, Content type, and Filters. Check grouping, icons, counts, selected states, and complete titles. Choose a type inside a Pinboard and while searching: the surrounding scope must remain intact.
+3. Use the destination and content-type icons, then open Filters. Check icons, counts, selected states, menu grouping, and complete titles. Choose a type inside a Pinboard and while searching: the surrounding scope must remain intact.
 4. Use hardware arrow keys, type-ahead, Return, and Escape. An open menu must retain keyboard focus if its parent window briefly becomes key. Escape returns to the opening button. Clicking the same button closes its menu; clicking another filter switches menus. Clicking a card or scrolling outside closes the menu.
 5. Choose different source apps and date ranges. Each replaces its previous choice while preserving free text and other filters. All apps clears only the source filter. Clear search and filters restores history.
 
@@ -116,7 +116,7 @@ Use this checklist before a release or after changes to the shelf, pasteboard, s
 ## Launch And Lifecycle
 
 1. Enable and disable Launch at Login and verify the next login behavior each time.
-2. Right-click or Control-click the menu-bar icon and confirm the menu includes capture state/count, Show Clipboard, New Pinboard, Settings, pause/resume options, and Quit.
+2. Right-click or Control-click the menu-bar icon and confirm the menu includes capture state/count, Open Goldfish, Settings, pause/resume options, and Quit.
 3. Test a timed pause, manual pause, and resume; confirm copies made while paused are not captured later on resume. A new copy after resume should capture normally.
 4. Quit from the menu-bar menu and confirm no `Goldfish` process remains.
 
@@ -124,8 +124,8 @@ Use this checklist before a release or after changes to the shelf, pasteboard, s
 
 - Close first-run welcome and verify setup stays incomplete and capture stays off. Menu bar, Dock reopen, open shortcut, and New Clip should return to setup. Only Start enables capture.
 - Test Copy fallback with no target or Accessibility permission. Confirm the shelf stays open and explains Command-V. With a valid target and permission, check the destination label and actual paste.
-- Delete multiple clips and use visible Undo. Trigger an unavailable attachment/preview and confirm a readable outcome. Capture updates must not erase action feedback.
-- Pause/resume from the footer and verify actual capture state. A blocked encryption key must report attention needed rather than normal capture.
+- Delete multiple clips and undo with Command-Z. Trigger an unavailable attachment/preview and confirm its accessibility announcement. Capture updates must not erase action feedback.
+- Pause/resume from Settings or the status menu and verify actual capture state. A blocked encryption key must report attention needed rather than normal capture.
 - Create/edit a clip in the attached sheet. Empty Save is disabled. Command-Return saves, Escape cancels, and the shelf remains open. Test a failed save and recovery; drafts must survive.
 - Check all widths, larger text, both appearances, legacy/overlay scrollbars, and 100%/200% displays. Inspect title/excerpt truncation, footer wrapping, and long Pinboard/app names.
 - Manually run find/preview/copy/pin/delete/undo with VoiceOver and Voice Control. Cards should be single navigation stops with custom actions; clipped preview children must not appear as extra stops.

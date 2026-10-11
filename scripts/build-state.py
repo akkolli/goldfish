@@ -51,9 +51,9 @@ def snapshot(root, allow_dirty=False):
     names = set(re.findall(r'name:\s*"([^"]+)"', package))
     if names != {'Goldfish', 'GoldfishTests'}:
         raise ValueError(f'Package and target names must be Goldfish / GoldfishTests, found {sorted(names)}')
-    config = (root / 'Sources/Goldfish/config/AppConfiguration.swift').read_text()
+    config = (root / 'Sources/Goldfish/config/AppConfig.swift').read_text()
     if 'static let appName = "Goldfish"' not in config:
-        raise ValueError('AppConfiguration.appName must be Goldfish')
+        raise ValueError('AppConfig.appName must be Goldfish')
     paths = git(root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0')
     # SwiftPM discovers files independently of Git. Include ignored compiler and
     # resource inputs too, and require an explicit preview for unpublished inputs.

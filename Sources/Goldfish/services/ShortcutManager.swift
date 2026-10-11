@@ -122,59 +122,19 @@ final class ShortcutManager {
   }
 
   static func virtualKeyCode(for key: String) -> UInt16? {
-    guard key.utf8.count == 1, var byte = key.utf8.first else { return nil }
-    if byte >= 65, byte <= 90 { byte += 32 }
-
-    switch byte {
-    case 97: return UInt16(kVK_ANSI_A)
-    case 98: return UInt16(kVK_ANSI_B)
-    case 99: return UInt16(kVK_ANSI_C)
-    case 100: return UInt16(kVK_ANSI_D)
-    case 101: return UInt16(kVK_ANSI_E)
-    case 102: return UInt16(kVK_ANSI_F)
-    case 103: return UInt16(kVK_ANSI_G)
-    case 104: return UInt16(kVK_ANSI_H)
-    case 105: return UInt16(kVK_ANSI_I)
-    case 106: return UInt16(kVK_ANSI_J)
-    case 107: return UInt16(kVK_ANSI_K)
-    case 108: return UInt16(kVK_ANSI_L)
-    case 109: return UInt16(kVK_ANSI_M)
-    case 110: return UInt16(kVK_ANSI_N)
-    case 111: return UInt16(kVK_ANSI_O)
-    case 112: return UInt16(kVK_ANSI_P)
-    case 113: return UInt16(kVK_ANSI_Q)
-    case 114: return UInt16(kVK_ANSI_R)
-    case 115: return UInt16(kVK_ANSI_S)
-    case 116: return UInt16(kVK_ANSI_T)
-    case 117: return UInt16(kVK_ANSI_U)
-    case 118: return UInt16(kVK_ANSI_V)
-    case 119: return UInt16(kVK_ANSI_W)
-    case 120: return UInt16(kVK_ANSI_X)
-    case 121: return UInt16(kVK_ANSI_Y)
-    case 122: return UInt16(kVK_ANSI_Z)
-    case 48: return UInt16(kVK_ANSI_0)
-    case 49: return UInt16(kVK_ANSI_1)
-    case 50: return UInt16(kVK_ANSI_2)
-    case 51: return UInt16(kVK_ANSI_3)
-    case 52: return UInt16(kVK_ANSI_4)
-    case 53: return UInt16(kVK_ANSI_5)
-    case 54: return UInt16(kVK_ANSI_6)
-    case 55: return UInt16(kVK_ANSI_7)
-    case 56: return UInt16(kVK_ANSI_8)
-    case 57: return UInt16(kVK_ANSI_9)
-    case 44: return UInt16(kVK_ANSI_Comma)
-    case 46: return UInt16(kVK_ANSI_Period)
-    case 47: return UInt16(kVK_ANSI_Slash)
-    case 59: return UInt16(kVK_ANSI_Semicolon)
-    case 39: return UInt16(kVK_ANSI_Quote)
-    case 91: return UInt16(kVK_ANSI_LeftBracket)
-    case 93: return UInt16(kVK_ANSI_RightBracket)
-    case 45: return UInt16(kVK_ANSI_Minus)
-    case 61: return UInt16(kVK_ANSI_Equal)
-    case 96: return UInt16(kVK_ANSI_Grave)
-    default: return nil
-    }
+    guard key.utf8.count == 1 else { return nil }
+    return Self.keyCodes[key.lowercased()].map(UInt16.init)
   }
+
+  private static let keyCodes: [String: Int] = [
+    "a": kVK_ANSI_A, "b": kVK_ANSI_B, "c": kVK_ANSI_C, "d": kVK_ANSI_D, "e": kVK_ANSI_E, "f": kVK_ANSI_F, "g": kVK_ANSI_G, "h": kVK_ANSI_H,
+    "i": kVK_ANSI_I, "j": kVK_ANSI_J, "k": kVK_ANSI_K, "l": kVK_ANSI_L, "m": kVK_ANSI_M, "n": kVK_ANSI_N, "o": kVK_ANSI_O, "p": kVK_ANSI_P,
+    "q": kVK_ANSI_Q, "r": kVK_ANSI_R, "s": kVK_ANSI_S, "t": kVK_ANSI_T, "u": kVK_ANSI_U, "v": kVK_ANSI_V, "w": kVK_ANSI_W, "x": kVK_ANSI_X,
+    "y": kVK_ANSI_Y, "z": kVK_ANSI_Z, "0": kVK_ANSI_0, "1": kVK_ANSI_1, "2": kVK_ANSI_2, "3": kVK_ANSI_3, "4": kVK_ANSI_4, "5": kVK_ANSI_5,
+    "6": kVK_ANSI_6, "7": kVK_ANSI_7, "8": kVK_ANSI_8, "9": kVK_ANSI_9, ",": kVK_ANSI_Comma, ".": kVK_ANSI_Period, "/": kVK_ANSI_Slash,
+    ";": kVK_ANSI_Semicolon, "'": kVK_ANSI_Quote, "[": kVK_ANSI_LeftBracket, "]": kVK_ANSI_RightBracket, "-": kVK_ANSI_Minus,
+    "=": kVK_ANSI_Equal, "`": kVK_ANSI_Grave,
+  ]
 
   static func carbonModifiers(for modifierFlags: UInt) -> UInt32 {
     var carbonFlags: UInt32 = 0

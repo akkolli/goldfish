@@ -2,13 +2,12 @@ import AppKit
 
 /// A small, shelf-owned editor for the two pinboard operations. It shares the
 /// same surface as the clip composer and stays beside the pinboard controls.
-final class PinboardEditorController: NSObject, NSTextFieldDelegate {
+final class PinboardEditorController: AttachedEditorController, NSTextFieldDelegate {
   private static let palette: [NSColor] = [.systemRed, .systemOrange, .systemYellow, .systemGreen, .systemTeal, .systemBlue, .systemPurple]
 
-  let window: ClipEditorPanel
   private let input = NSTextField()
   private let inputSurface = PinboardNameSurface()
-  private let saveButton = ClipboardToolbarIconButton(title: "Save Pinboard", target: nil, action: nil)
+  private let saveButton = ShelfIconButton(title: "Save Pinboard", target: nil, action: nil)
   private let message = NSTextField(labelWithString: "")
   private var swatches: [PinboardChoiceButton] = []
   private var iconButtons: [PinboardChoiceButton] = []
@@ -16,24 +15,20 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
   private var icon: String
   private let initialName: String
   private let existingNames: () -> [String]
-  private let onSave: (CollectionCreationRequest) -> Void
-  private let onFinish: () -> Void
-  private weak var parentWindow: NSWindow?
-  private weak var anchorView: NSView?
-  private var isFinished = false
+  private let onSave: (PinboardRequest) -> Void
 
   init(
     editing: Bool, initialName: String, initialColor: NSColor, initialIcon: String, existingNames: @escaping () -> [String],
-    onSave: @escaping (CollectionCreationRequest) -> Void, onFinish: @escaping () -> Void
+    onSave: @escaping (PinboardRequest) -> Void, onFinish: @escaping () -> Void
   ) {
     self.initialName = initialName
     self.color = initialColor
-    self.icon = ClipboardCollectionIcon.normalized(initialIcon) ?? ClipboardCollectionIcon.defaultSymbol
+    self.icon = PinboardIcon.normalized(initialIcon) ?? PinboardIcon.defaultSymbol
     self.existingNames = existingNames
     self.onSave = onSave
-    self.onFinish = onFinish
-    window = ClipEditorPanel(title: editing ? "Edit Pinboard" : "New Pinboard", size: NSSize(width: 318, height: 176))
-    super.init()
+    super.init(
+      window: ClipEditorPanel(title: editing ? "Edit Pinboard" : "New Pinboard", size: NSSize(width: 318, height: 176)),
+      position: .pinboard, onFinish: onFinish)
 
     let surface = ClipEditorSheetSurface(frame: window.contentView?.bounds ?? .zero)
     window.contentView = surface
@@ -57,8 +52,8 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
     input.delegate = self
     inputSurface.addSubview(input)
 
-    let colorLabel = NativeUI.label("Color", font: .systemFont(ofSize: 11, weight: .medium), color: ClipboardShelfStyle.secondaryText)
-    let iconLabel = NativeUI.label("Icon", font: .systemFont(ofSize: 11, weight: .medium), color: ClipboardShelfStyle.secondaryText)
+    let colorLabel = NativeUI.label("Color", font: .systemFont(ofSize: 11, weight: .medium), color: ShelfStyle.secondaryText)
+    let iconLabel = NativeUI.label("Icon", font: .systemFont(ofSize: 11, weight: .medium), color: ShelfStyle.secondaryText)
 
     message.font = .systemFont(ofSize: 11)
     message.textColor = .systemRed
@@ -92,59 +87,28 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
       message.topAnchor.constraint(equalTo: surface.topAnchor, constant: 176),
     ])
 
-    var previous: NSView = colorLabel
-    for (index, swatchColor) in Self.palette.enumerated() {
-      let swatch = PinboardChoiceButton(color: swatchColor, target: self, action: #selector(selectSwatch(_:)))
-      swatch.tag = index
-      swatch.translatesAutoresizingMaskIntoConstraints = false
-      surface.addSubview(swatch)
-      NSLayoutConstraint.activate([
-        swatch.leadingAnchor.constraint(equalTo: previous.trailingAnchor, constant: index == 0 ? 13 : 9),
-        swatch.centerYAnchor.constraint(equalTo: colorLabel.centerYAnchor), swatch.widthAnchor.constraint(equalToConstant: 22),
-        swatch.heightAnchor.constraint(equalToConstant: 22),
-      ])
-      swatches.append(swatch)
-      previous = swatch
+    swatches = Self.palette.map { PinboardChoiceButton(color: $0, target: self, action: #selector(selectSwatch(_:))) }
+    iconButtons = PinboardIcon.choices.map {
+      PinboardChoiceButton(symbol: $0.symbol, label: $0.label, target: self, action: #selector(selectIcon(_:)))
     }
-    previous = iconLabel
-    for (index, choice) in ClipboardCollectionIcon.choices.enumerated() {
-      let button = PinboardChoiceButton(symbol: choice.symbol, label: choice.label, target: self, action: #selector(selectIcon(_:)))
-      button.tag = index
-      button.translatesAutoresizingMaskIntoConstraints = false
-      surface.addSubview(button)
-      NSLayoutConstraint.activate([
-        button.leadingAnchor.constraint(equalTo: previous.trailingAnchor, constant: index == 0 ? 13 : 4),
-        button.centerYAnchor.constraint(equalTo: iconLabel.centerYAnchor), button.widthAnchor.constraint(equalToConstant: 25),
-        button.heightAnchor.constraint(equalToConstant: 25),
-      ])
-      iconButtons.append(button)
-      previous = button
+    for (label, buttons, size, gap) in [(colorLabel, swatches, CGFloat(22), CGFloat(9)), (iconLabel, iconButtons, 25, 4)] {
+      var previous: NSView = label
+      for (index, button) in buttons.enumerated() {
+        button.tag = index
+        button.translatesAutoresizingMaskIntoConstraints = false
+        surface.addSubview(button)
+        NSLayoutConstraint.activate([
+          button.leadingAnchor.constraint(equalTo: previous.trailingAnchor, constant: index == 0 ? 13 : gap),
+          button.centerYAnchor.constraint(equalTo: label.centerYAnchor),
+        ])
+        button.constrainSize(width: size, height: size)
+        previous = button
+      }
     }
     window.initialFirstResponder = input
     updateValidation()
     updateSwatchSelection()
     updateIconSelection()
-  }
-
-  func show(relativeTo parent: NSWindow, anchoredTo anchor: NSView?) {
-    parentWindow = parent
-    anchorView = anchor
-    positionNearAnchor()
-    window.attachToShelf(parent)
-    window.makeKeyAndOrderFront(nil)
-    window.makeFirstResponder(input)
-  }
-
-  private func positionNearAnchor() {
-    guard let parent = parentWindow else { return }
-    let screen = parent.screen?.visibleFrame ?? parent.frame
-    let source = anchorView.map { parent.convertToScreen($0.convert($0.bounds, to: nil)) }
-    let left = max(parent.frame.minX + 8, screen.minX + 8)
-    let right = min(parent.frame.maxX - window.frame.width - 8, screen.maxX - window.frame.width - 8)
-    let x = max(left, min((source?.minX ?? parent.frame.minX) - 8, max(left, right)))
-    let below = (source?.minY ?? parent.frame.maxY) - window.frame.height - 6
-    let y = below >= screen.minY + 8 ? below : min((source?.maxY ?? parent.frame.maxY) + 6, screen.maxY - window.frame.height - 8)
-    window.setFrameOrigin(NSPoint(x: x, y: y))
   }
 
   func controlTextDidChange(_ notification: Notification) { updateValidation() }
@@ -162,7 +126,7 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
   }
 
   private func updateValidation() {
-    let name = ClipboardCollectionDefaults.normalizedName(input.stringValue)
+    let name = PinboardNames.normalizedName(input.stringValue)
     let duplicate =
       name.map { candidate in
         existingNames().contains {
@@ -170,7 +134,7 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
         }
       } ?? false
     saveButton.isEnabled = name != nil && !duplicate
-    saveButton.contentTintColor = saveButton.isEnabled ? ClipboardShelfStyle.brandAccent : .tertiaryLabelColor
+    saveButton.contentTintColor = saveButton.isEnabled ? ShelfStyle.brandAccent : .tertiaryLabelColor
     message.stringValue = duplicate ? "A pinboard with this name already exists" : ""
     message.isHidden = !duplicate
     let desiredHeight: CGFloat = duplicate ? 194 : 176
@@ -181,10 +145,8 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
   }
 
   private func updateSwatchSelection() {
-    let chosen = ClipboardCollectionVisuals.hexString(for: color)
-    for (index, swatch) in swatches.enumerated() {
-      swatch.isChoiceSelected = ClipboardCollectionVisuals.hexString(for: Self.palette[index]) == chosen
-    }
+    let chosen = PinboardStyle.hexString(for: color)
+    for (index, swatch) in swatches.enumerated() { swatch.isChoiceSelected = PinboardStyle.hexString(for: Self.palette[index]) == chosen }
   }
 
   @objc private func selectSwatch(_ sender: NSButton) {
@@ -195,46 +157,37 @@ final class PinboardEditorController: NSObject, NSTextFieldDelegate {
 
   private func updateIconSelection() {
     for (index, button) in iconButtons.enumerated() {
-      button.isChoiceSelected = ClipboardCollectionIcon.choices[index].symbol == icon
+      button.isChoiceSelected = PinboardIcon.choices[index].symbol == icon
       button.accentColor = color
     }
   }
 
   @objc private func selectIcon(_ sender: NSButton) {
-    icon = ClipboardCollectionIcon.choices[sender.tag].symbol
+    icon = PinboardIcon.choices[sender.tag].symbol
     updateIconSelection()
   }
 
   @objc private func save() {
-    guard saveButton.isEnabled, let name = ClipboardCollectionDefaults.normalizedName(input.stringValue) else { return }
-    let request = CollectionCreationRequest(name: name, colorHex: ClipboardCollectionVisuals.hexString(for: color), icon: icon)
+    guard saveButton.isEnabled, let name = PinboardNames.normalizedName(input.stringValue) else { return }
+    let request = PinboardRequest(name: name, colorHex: PinboardStyle.hexString(for: color), icon: icon)
     dismiss()
     onSave(request)
   }
 
-  @objc func dismiss() {
-    guard !isFinished else { return }
-    isFinished = true
-    window.detachFromShelf()
-    onFinish()
-  }
-
-  private func iconButton(_ symbol: String, label: String, action: Selector) -> ClipboardToolbarIconButton {
-    let button = ClipboardToolbarIconButton(title: label, target: self, action: action)
+  private func iconButton(_ symbol: String, label: String, action: Selector) -> ShelfIconButton {
+    let button = ShelfIconButton(title: label, target: self, action: action)
     configureIcon(button, symbol: symbol, label: label)
     return button
   }
 
-  private func configureIcon(_ button: ClipboardToolbarIconButton, symbol: String, label: String) {
+  private func configureIcon(_ button: ShelfIconButton, symbol: String, label: String) {
     button.configureIcon(symbol, label: label, symbolConfiguration: .init(pointSize: 12, weight: .semibold))
   }
 }
 
 /// Color and symbol choices share selection, pointer and appearance ownership.
-private final class PinboardChoiceButton: NSButton {
+private final class PinboardChoiceButton: NativeHoverButton {
   private let swatchColor: NSColor?
-  private var isHovered = false
-  private var hoverArea: NSTrackingArea?
   var isChoiceSelected = false { didSet { updateAppearance() } }
   var accentColor: NSColor = .controlAccentColor { didSet { updateAppearance() } }
 
@@ -269,35 +222,19 @@ private final class PinboardChoiceButton: NSButton {
   }
 
   required init?(coder: NSCoder) { nil }
-  override func updateTrackingAreas() {
-    super.updateTrackingAreas()
-    if let hoverArea { removeTrackingArea(hoverArea) }
-    hoverArea = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
-    addTrackingArea(hoverArea!)
-  }
-  override func mouseEntered(with event: NSEvent) {
-    isHovered = true
-    updateAppearance()
-  }
-  override func mouseExited(with event: NSEvent) {
-    isHovered = false
-    updateAppearance()
-  }
   override func resetCursorRects() {
     super.resetCursorRects()
     addCursorRect(bounds.intersection(visibleRect), cursor: .arrow)
   }
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    updateAppearance()
-  }
+  override func pointerAppearanceChanged() { updateAppearance() }
 
   private func updateAppearance() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
       if let swatchColor {
         layer?.backgroundColor = swatchColor.cgColor
         let ink = NSColor.labelColor
-        layer?.borderColor = isChoiceSelected ? ink.withAlphaComponent(0.9).cgColor : ink.withAlphaComponent(isHovered ? 0.42 : 0).cgColor
+        layer?.borderColor =
+          isChoiceSelected ? ink.withAlphaComponent(0.9).cgColor : ink.withAlphaComponent(isPointerInside ? 0.42 : 0).cgColor
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = isChoiceSelected ? 0.22 : 0
         layer?.shadowRadius = 3
@@ -305,7 +242,7 @@ private final class PinboardChoiceButton: NSButton {
         contentTintColor = isChoiceSelected ? accentColor : .secondaryLabelColor
         layer?.backgroundColor =
           isChoiceSelected
-          ? accentColor.withAlphaComponent(0.17).cgColor : NSColor.labelColor.withAlphaComponent(isHovered ? 0.08 : 0).cgColor
+          ? accentColor.withAlphaComponent(0.17).cgColor : NSColor.labelColor.withAlphaComponent(isPointerInside ? 0.08 : 0).cgColor
         layer?.borderColor = isChoiceSelected ? accentColor.withAlphaComponent(0.42).cgColor : NSColor.clear.cgColor
       }
     }

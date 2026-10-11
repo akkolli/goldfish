@@ -56,6 +56,7 @@ def measure(root):
         if not any(path.is_relative_to(root / name) for name in groups))
     executable = root / 'build/Goldfish.app/Contents/MacOS/Goldfish'
     return dict(maintained_total=text_metrics(files), groups=groups,
+                documentation=text_metrics(path for path in files if path.suffix.lower() == '.md'),
                 app_swift=text_metrics(path for path in files if path.is_relative_to(root / 'Sources') and path.suffix == '.swift'),
                 test_swift=text_metrics(path for path in files if path.is_relative_to(root / 'Tests') and path.suffix == '.swift'),
                 app_bundle_bytes=size(root / 'build/Goldfish.app'),
@@ -67,6 +68,8 @@ def main():
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--max-lines', type=int, help='Fail when the maintained total exceeds this budget')
+    parser.add_argument('--max-test-lines', type=int, help='Limit every maintained file under Tests, including helpers')
+    parser.add_argument('--max-doc-lines', type=int, help='Limit all maintained Markdown, including root documentation')
     args = parser.parse_args()
     report = measure(args.root.resolve())
     if args.json:
@@ -78,8 +81,12 @@ def main():
         print(f"Text: {total['bytes']:,} bytes; binary assets: {total['binary_bytes']:,} bytes")
         print(f"Built app: {report['app_bundle_bytes']:,} bytes; executable: {report['executable_bytes']:,} bytes")
         print('Counts include documentation, configuration, text assets, comments and blanks. Generated output is excluded.')
-    if args.max_lines is not None and report['maintained_total']['lines'] > args.max_lines:
-        parser.exit(1, f"Maintained text exceeds the {args.max_lines:,}-line budget.\n")
+    budgets = [('Maintained text', args.max_lines, report['maintained_total']),
+               ('Tests', args.max_test_lines, report['groups']['Tests']),
+               ('Documentation', args.max_doc_lines, report['documentation'])]
+    for label, limit, group in budgets:
+        if limit is not None and group['lines'] > limit:
+            parser.exit(1, f"{label} exceeds the {limit:,}-line budget.\n")
 
 
 if __name__ == '__main__':

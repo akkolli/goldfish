@@ -15,13 +15,13 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
   }
   static func initialShortcutChoice(for binding: ShortcutBinding, onboardingCompleted: Bool) -> ShortcutChoice {
     if binding == pasteStyleOpenShortcut { return .pasteStyle }
-    if binding == AppConfiguration.defaultOpenShortcut { return onboardingCompleted ? .clipBoredDefault : .pasteStyle }
+    if binding == AppConfig.defaultOpenShortcut { return onboardingCompleted ? .clipBoredDefault : .pasteStyle }
     return .current
   }
   static func shortcutBinding(for choice: ShortcutChoice, current: ShortcutBinding) -> ShortcutBinding {
     switch choice {
     case .pasteStyle: return pasteStyleOpenShortcut
-    case .clipBoredDefault: return AppConfiguration.defaultOpenShortcut
+    case .clipBoredDefault: return AppConfig.defaultOpenShortcut
     case .current: return current
     }
   }
@@ -78,12 +78,12 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
   private func makeContentView() -> NSView {
     let content = WelcomeSurface()
     let hero = NSView()
-    let brand = label("GOLDFISH", size: 11, weight: .semibold, color: ClipboardShelfStyle.secondaryText)
+    let brand = label("GOLDFISH", size: 11, weight: .semibold, color: ShelfStyle.secondaryText)
     brand.attributedStringValue = NSAttributedString(
       string: "GOLDFISH",
-      attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: ClipboardShelfStyle.secondaryText, .kern: 2])
+      attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: ShelfStyle.secondaryText, .kern: 2])
     let heading = label("A little less lost.\nA lot more found.", size: 32, weight: .bold)
-    let subtitle = label("Your links, ideas, and everyday copies.\nOne shortcut away.", size: 14, color: ClipboardShelfStyle.secondaryText)
+    let subtitle = label("Your links, ideas, and everyday copies.\nOne shortcut away.", size: 14, color: ShelfStyle.secondaryText)
     let words = NativeUI.stack([brand, heading, subtitle], axis: .vertical, alignment: .leading, spacing: 14)
     words.setCustomSpacing(12, after: heading)
     let preview = WelcomeShelfPreview()
@@ -101,19 +101,16 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     shortcutButton.target = self
     shortcutButton.action = #selector(chooseShortcut)
     shortcutButton.setAccessibilityLabel("Open Goldfish shortcut")
-    shortcutButton.widthAnchor.constraint(equalToConstant: 126).isActive = true
-    shortcutButton.heightAnchor.constraint(equalToConstant: 38).isActive = true
+    shortcutButton.constrainSize(width: 126, height: 38)
     permissionButton.target = self
     permissionButton.action = #selector(openAccessibilitySettings)
-    permissionButton.widthAnchor.constraint(equalToConstant: 126).isActive = true
-    permissionButton.heightAnchor.constraint(equalToConstant: 38).isActive = true
+    permissionButton.constrainSize(width: 126, height: 38)
     permissionStatusLabel.font = .systemFont(ofSize: 12)
-    permissionStatusLabel.textColor = ClipboardShelfStyle.secondaryText
+    permissionStatusLabel.textColor = ShelfStyle.secondaryText
     let options = WelcomeOptionsSurface()
     let shortcutRow = optionRow(
       symbol: "command", title: "Open your clipboard",
-      subtitle: label("Choose a shortcut that feels familiar.", size: 12, color: ClipboardShelfStyle.secondaryText), control: shortcutButton
-    )
+      subtitle: label("Choose a shortcut that feels familiar.", size: 12, color: ShelfStyle.secondaryText), control: shortcutButton)
     let permissionRow = optionRow(
       symbol: "cursorarrow.click", title: "Paste directly into apps", subtitle: permissionStatusLabel, control: permissionButton)
     let rows = NativeUI.stack([shortcutRow, permissionRow], axis: .vertical, alignment: .leading, spacing: 0)
@@ -126,21 +123,19 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     ])
 
     let privacyIcon = NSImageView(image: NSImage(systemSymbolName: "lock.shield", accessibilityDescription: nil)!)
-    privacyIcon.contentTintColor = ClipboardShelfStyle.secondaryText
-    privacyIcon.widthAnchor.constraint(equalToConstant: 15).isActive = true
-    privacyIcon.heightAnchor.constraint(equalToConstant: 16).isActive = true
+    privacyIcon.contentTintColor = ShelfStyle.secondaryText
+    privacyIcon.constrainSize(width: 15, height: 16)
     privacyLabel.font = .systemFont(ofSize: 11)
-    privacyLabel.textColor = ClipboardShelfStyle.secondaryText
+    privacyLabel.textColor = ShelfStyle.secondaryText
     let privacy = NativeUI.stack([privacyIcon, privacyLabel], axis: .horizontal, alignment: .centerY, spacing: 7)
     let finish = WelcomeButton(title: "Start using Goldfish  →", primary: true)
     finish.target = self
     finish.action = #selector(finishSetup)
     finish.keyEquivalent = "\r"
     finish.setAccessibilityLabel("Start using Goldfish")
-    finish.widthAnchor.constraint(equalToConstant: 214).isActive = true
-    finish.heightAnchor.constraint(equalToConstant: 44).isActive = true
+    finish.constrainSize(width: 214, height: 44)
     let note = label(
-      "Start saves your future copies locally.\nClose this window to set up later.", size: 12, color: ClipboardShelfStyle.secondaryText)
+      "Start saves your future copies locally.\nClose this window to set up later.", size: 12, color: ShelfStyle.secondaryText)
     let footer = NativeUI.stack([note, NSView(), finish], axis: .horizontal, alignment: .centerY, spacing: 16)
     footer.arrangedSubviews[1].setContentHuggingPriority(.defaultLow, for: .horizontal)
     let stack = NativeUI.stack([hero, options, privacy, footer], axis: .vertical, alignment: .leading, spacing: 18)
@@ -159,13 +154,13 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
 
   private func optionRow(symbol: String, title: String, subtitle: NSTextField, control: NSView) -> NSView {
     let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil)!)
-    icon.contentTintColor = ClipboardShelfStyle.secondaryText
+    icon.contentTintColor = ShelfStyle.secondaryText
     icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 19, weight: .regular)
     icon.widthAnchor.constraint(equalToConstant: 24).isActive = true
     let text = NativeUI.stack([label(title, size: 14, weight: .medium), subtitle], axis: .vertical, alignment: .leading, spacing: 4)
     let row = NativeUI.stack(
-      [icon, text, NSView(), control],
-      axis: .horizontal, alignment: .centerY, spacing: 12, insets: NSEdgeInsets(top: 0, left: 18, bottom: 0, right: 16))
+      [icon, text, NSView(), control], axis: .horizontal, alignment: .centerY, spacing: 12,
+      insets: NSEdgeInsets(top: 0, left: 18, bottom: 0, right: 16))
     row.arrangedSubviews[2].setContentHuggingPriority(.defaultLow, for: .horizontal)
     row.heightAnchor.constraint(equalToConstant: 76).isActive = true
     return row
@@ -188,7 +183,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
   @objc private func chooseShortcut() {
     let menu = NSMenu()
     var choices: [(String, ShortcutChoice)] = [("⇧⌘V — Shift–Command–V", .pasteStyle), ("⌥⌘V — Option–Command–V", .clipBoredDefault)]
-    if settings.openShortcut != Self.pasteStyleOpenShortcut, settings.openShortcut != AppConfiguration.defaultOpenShortcut {
+    if settings.openShortcut != Self.pasteStyleOpenShortcut, settings.openShortcut != AppConfig.defaultOpenShortcut {
       choices.append(("Keep current: \(settings.openShortcut.displayText)", .current))
     }
     for (title, choice) in choices {
@@ -209,22 +204,17 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     onOpenAccessibility()
     refreshPermissionStatus()
   }
-  @objc private func finishSetup() { completeSetup(applySelections: true, closeWindow: true) }
-  private func completeSetup(applySelections: Bool, closeWindow: Bool) {
+  @objc private func finishSetup() {
     guard !didComplete else { return }
     didComplete = true
-    if applySelections {
-      settings.openShortcut = Self.shortcutBinding(for: shortcutChoice, current: settings.openShortcut)
-      let presentation = Self.normalizedPresentation(showMenuBarIcon: settings.showMenuBarIcon, showDockIcon: settings.showDockIcon)
-      settings.showMenuBarIcon = presentation.showMenuBarIcon
-      settings.showDockIcon = presentation.showDockIcon
-    }
+    settings.openShortcut = Self.shortcutBinding(for: shortcutChoice, current: settings.openShortcut)
+    let presentation = Self.normalizedPresentation(showMenuBarIcon: settings.showMenuBarIcon, showDockIcon: settings.showDockIcon)
+    settings.showMenuBarIcon = presentation.showMenuBarIcon
+    settings.showDockIcon = presentation.showDockIcon
     settings.markAccessibilityNoticeShown()
     settings.markOnboardingCompleted()
-    if closeWindow {
-      window?.delegate = nil
-      window?.close()
-    }
+    window?.delegate = nil
+    window?.close()
     onFinish()
   }
 }
@@ -233,10 +223,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
 // illustration is native vector artwork and stays sharp at every display scale.
 private class WelcomeSurface: NSView {
   override var isFlipped: Bool { true }
-  override func draw(_ dirtyRect: NSRect) {
-    ClipboardShelfStyle.windowBackground.setFill()
-    bounds.fill()
-  }
+  override func draw(_ dirtyRect: NSRect) { bounds.fill(with: ShelfStyle.windowBackground) }
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
     needsDisplay = true
@@ -246,11 +233,8 @@ private class WelcomeSurface: NSView {
 private final class WelcomeOptionsSurface: WelcomeSurface {
   override func draw(_ dirtyRect: NSRect) {
     let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 14, yRadius: 14)
-    NSColor.labelColor.withAlphaComponent(0.035).setFill()
-    path.fill()
-    NSColor.labelColor.withAlphaComponent(0.065).setStroke()
-    path.lineWidth = 1
-    path.stroke()
+    path.fill(with: NSColor.labelColor.withAlphaComponent(0.035))
+    path.stroke(with: NSColor.labelColor.withAlphaComponent(0.065), width: 1)
     let divider = NSBezierPath()
     divider.move(to: NSPoint(x: 54, y: bounds.midY))
     divider.line(to: NSPoint(x: bounds.maxX - 16, y: bounds.midY))
@@ -259,10 +243,8 @@ private final class WelcomeOptionsSurface: WelcomeSurface {
   }
 }
 
-private final class WelcomeButton: NSButton {
+private final class WelcomeButton: NativeHoverButton {
   private let primary: Bool
-  private var hovered = false
-  private var hoverArea: NSTrackingArea?
   init(title: String, primary: Bool) {
     self.primary = primary
     super.init(frame: .zero)
@@ -272,47 +254,23 @@ private final class WelcomeButton: NSButton {
     font = .systemFont(ofSize: 13, weight: .semibold)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-  override func updateTrackingAreas() {
-    super.updateTrackingAreas()
-    if let hoverArea { removeTrackingArea(hoverArea) }
-    let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
-    addTrackingArea(area)
-    hoverArea = area
-  }
-  override func mouseEntered(with event: NSEvent) {
-    hovered = true
-    needsDisplay = true
-  }
-  override func mouseExited(with event: NSEvent) {
-    hovered = false
-    needsDisplay = true
-  }
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    needsDisplay = true
-  }
+  override var trackingActivity: NSTrackingArea.Options { .activeInKeyWindow }
   override func draw(_ dirtyRect: NSRect) {
     let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 10, yRadius: 10)
-    let base = ClipboardShelfStyle.brandAccent
+    let base = ShelfStyle.brandAccent
     let fill =
       primary
       ? (isHighlighted ? base.blended(withFraction: 0.16, of: .black)! : base)
-      : NSColor.labelColor.withAlphaComponent(isHighlighted ? 0.13 : (hovered ? 0.09 : 0.055))
-    fill.setFill()
-    path.fill()
+      : NSColor.labelColor.withAlphaComponent(isHighlighted ? 0.13 : (isPointerInside ? 0.09 : 0.055))
+    path.fill(with: fill)
     let attributes: [NSAttributedString.Key: Any] = [
       .font: font ?? NSFont.systemFont(ofSize: 13, weight: .semibold),
-      .foregroundColor: primary
-        ? ClipboardShelfStyle.foregroundColor(on: base) : (isEnabled ? NSColor.labelColor : ClipboardShelfStyle.secondaryText),
+      .foregroundColor: primary ? ShelfStyle.foregroundColor(on: base) : (isEnabled ? NSColor.labelColor : ShelfStyle.secondaryText),
     ]
     let size = (title as NSString).size(withAttributes: attributes)
     (title as NSString).draw(
       at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2), withAttributes: attributes)
-    if window?.firstResponder === self {
-      NSColor.keyboardFocusIndicatorColor.setStroke()
-      path.lineWidth = 2
-      path.stroke()
-    }
+    if window?.firstResponder === self { path.stroke(with: NSColor.keyboardFocusIndicatorColor, width: 2) }
   }
 }
 
@@ -324,27 +282,22 @@ private final class WelcomeShelfPreview: NSView {
   }
   override func draw(_ dirtyRect: NSRect) {
     let shell = NSBezierPath(roundedRect: NSRect(x: 6, y: 0, width: 188, height: 192), xRadius: 18, yRadius: 18)
-    NSColor.labelColor.withAlphaComponent(0.045).setFill()
-    shell.fill()
-    drawText("Search your clips", at: NSPoint(x: 23, y: 14), size: 10, color: ClipboardShelfStyle.secondaryText)
+    shell.fill(with: NSColor.labelColor.withAlphaComponent(0.045))
+    drawText("Search your clips", at: NSPoint(x: 23, y: 14), size: 10, color: ShelfStyle.secondaryText)
     let cards: [(CGFloat, String, String, String)] = [
       (38, "Notes", "Keep the good things.", "A little inspiration."), (112, "Safari", "A good find.", "apple.com"),
     ]
     for (y, source, title, body) in cards {
       let rect = NSRect(x: 18, y: y, width: 164, height: 64)
       let path = NSBezierPath(roundedRect: rect, xRadius: 11, yRadius: 11)
-      ClipboardShelfStyle.cardBackground.setFill()
-      path.fill()
-      NSGraphicsContext.saveGraphicsState()
-      path.addClip()
-      let accent = ClipboardItemCardContentFormatter().accentColor(for: source == "Notes" ? .text : .url)
-      accent.setFill()
-      NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: 20).fill()
-      drawText(
-        source == "Notes" ? "Text" : "Link", at: NSPoint(x: 29, y: y + 5), size: 8, color: ClipboardShelfStyle.foregroundColor(on: accent))
-      drawText(title, at: NSPoint(x: 29, y: y + 27), size: 10, color: .labelColor)
-      drawText(body, at: NSPoint(x: 29, y: y + 44), size: 9, color: ClipboardShelfStyle.secondaryText)
-      NSGraphicsContext.restoreGraphicsState()
+      path.fill(with: ShelfStyle.cardBackground)
+      path.clipped {
+        let accent = ClipPresentation().accentColor(for: source == "Notes" ? .text : .url)
+        NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: 20).fill(with: accent)
+        drawText(source == "Notes" ? "Text" : "Link", at: NSPoint(x: 29, y: y + 5), size: 8, color: ShelfStyle.foregroundColor(on: accent))
+        drawText(title, at: NSPoint(x: 29, y: y + 27), size: 10, color: .labelColor)
+        drawText(body, at: NSPoint(x: 29, y: y + 44), size: 9, color: ShelfStyle.secondaryText)
+      }
     }
   }
 

@@ -24,7 +24,7 @@ class BuildStateTests(unittest.TestCase):
         self.info.parent.mkdir(parents=True)
         self.info.write_bytes(plistlib.dumps(dict(CFBundleName='Goldfish', CFBundleDisplayName='Goldfish',
                                                  CFBundleExecutable='Goldfish', CFBundleIdentifier='com.local.clipbored')))
-        config = self.root / 'Sources/Goldfish/config/AppConfiguration.swift'
+        config = self.root / 'Sources/Goldfish/config/AppConfig.swift'
         config.parent.mkdir()
         config.write_text('static let appName = "Goldfish"')
         (self.root / 'Package.swift').write_text('name: "Goldfish", name: "GoldfishTests"')

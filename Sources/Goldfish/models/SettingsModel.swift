@@ -25,7 +25,7 @@ enum HistoryRetention: Int {
   }
 }
 
-enum ClipboardPanelSide: Int, CaseIterable {
+enum ShelfSide: Int, CaseIterable {
   case left = 0
   case right = 1
 
@@ -37,7 +37,7 @@ enum ClipboardPanelSide: Int, CaseIterable {
   }
 }
 
-enum ClipboardShelfWidth: Int, CaseIterable {
+enum ShelfWidth: Int, CaseIterable {
   case compact = 336
   case standard = 420
   case wide = 540
@@ -50,42 +50,20 @@ enum ClipboardShelfWidth: Int, CaseIterable {
   }
 }
 
-enum ClipboardShelfLayout: Int, CaseIterable {
+enum ShelfLayout: Int, CaseIterable {
   case cards = 0
   case sidebar = 1
-  static let allCases: [ClipboardShelfLayout] = [.sidebar, .cards]
+  static let allCases: [ShelfLayout] = [.sidebar, .cards]
   var title: String { self == .cards ? "Horizontal shelf" : "Vertical shelf" }
 }
 
 final class SettingsModel {
   enum Change: Equatable {
-    case maxHistoryItems
-    case historyRetention
-    case defaultSortMode
-    case imageCacheMaxBytes
-    case includeImageTextInSearch
-    case pruneDuplicates
-    case openShortcut
-    case settingsShortcut
-    case launchAtLogin
-    case showMenuBarIcon
-    case goldMenuBarIcon
-    case soundEffects
-    case showDockIcon
-    case panelSide
-    case cloudSync
-    case pauseCapture
-    case ignoredApps
-    case ignoredItemKinds
-    case keepFirstImage
-    case excludeSensitive
-    case hideFromScreenCapture
-    case clearHistoryOnQuit
-    case pollProfile
-    case captureStatus
-    case collections
-    case status
-    case other
+    case maxHistoryItems, historyRetention, defaultSortMode, imageCacheMaxBytes
+    case includeImageTextInSearch, pruneDuplicates, keepFirstImage, excludeSensitive, ignoredApps, ignoredItemKinds, pollProfile
+    case openShortcut, settingsShortcut, launchAtLogin, showMenuBarIcon, goldMenuBarIcon, soundEffects, showDockIcon, panelSide
+    case cloudSync, pauseCapture, hideFromScreenCapture, clearHistoryOnQuit
+    case captureStatus, collections, status, other
   }
 
   enum Keys {
@@ -127,12 +105,12 @@ final class SettingsModel {
   }
 
   @Preference(
-    .maxHistoryItems, AppConfiguration.defaultHistoryLength, key: Keys.maxHistoryItems,
-    read: { ($0 as? Int).flatMap { $0 > 0 ? $0 : nil } }, normalize: SettingsModel.clampedMaxHistoryItems) var maxHistoryItems: Int
+    .maxHistoryItems, AppConfig.defaultHistoryLength, key: Keys.maxHistoryItems, read: { ($0 as? Int).flatMap { $0 > 0 ? $0 : nil } },
+    normalize: SettingsModel.clampedMaxHistoryItems) var maxHistoryItems: Int
   @Preference(.historyRetention, raw: .oneMonth, key: Keys.historyRetention) var historyRetention: HistoryRetention
-  @Preference(.defaultSortMode, raw: .mostRecent, key: Keys.defaultSortMode) var defaultSortMode: ClipboardSortMode
+  @Preference(.defaultSortMode, raw: .mostRecent, key: Keys.defaultSortMode) var defaultSortMode: ShelfFilter
   @Preference(
-    .imageCacheMaxBytes, AppConfiguration.defaultCacheMaxBytes, key: Keys.imageCacheMaxBytes,
+    .imageCacheMaxBytes, AppConfig.defaultCacheMaxBytes, key: Keys.imageCacheMaxBytes,
     read: { ($0 as? Int64).flatMap { $0 > 0 ? $0 : nil } }, normalize: SettingsModel.clampedImageCacheMaxBytes) var imageCacheMaxBytes:
     Int64
   @Preference(.includeImageTextInSearch, false, key: Keys.includeImageTextInSearch) var includeImageTextInSearch: Bool
@@ -144,20 +122,19 @@ final class SettingsModel {
   @Preference(.soundEffects, false, key: Keys.pasteSoundEnabled) var pasteSoundEnabled: Bool
   @Preference(.soundEffects, 0.30, key: Keys.soundVolume, normalize: SettingsModel.clampedSoundVolume) var soundVolume: Double
   @Preference(.showDockIcon, false, key: Keys.showDockIcon) var showDockIcon: Bool
-  @Preference(.panelSide, raw: .right, key: Keys.panelSide) var panelSide: ClipboardPanelSide
-  @Preference(.other, raw: .standard, key: Keys.shelfWidth) var shelfWidth: ClipboardShelfWidth
-  @Preference(.other, raw: .sidebar, key: Keys.shelfLayout) var shelfLayout: ClipboardShelfLayout
+  @Preference(.panelSide, raw: .right, key: Keys.panelSide) var panelSide: ShelfSide
+  @Preference(.other, raw: .standard, key: Keys.shelfWidth) var shelfWidth: ShelfWidth
+  @Preference(.other, raw: .sidebar, key: Keys.shelfLayout) var shelfLayout: ShelfLayout
   @Preference(.other, false, key: Keys.largerShelfText) var largerShelfText: Bool
   @Preference(.other, false, key: Keys.sortByUsage) var sortByUsage: Bool
   @Preference(.cloudSync, false, key: Keys.iCloudSyncEnabled) var iCloudSyncEnabled: Bool
-  @Preference(.openShortcut, shortcut: AppConfiguration.defaultOpenShortcut, key: Keys.openShortcut) var openShortcut: ShortcutBinding
-  @Preference(.settingsShortcut, shortcut: AppConfiguration.defaultSettingsShortcut, key: Keys.settingsShortcut) var settingsShortcut:
+  @Preference(.openShortcut, shortcut: AppConfig.defaultOpenShortcut, key: Keys.openShortcut) var openShortcut: ShortcutBinding
+  @Preference(.settingsShortcut, shortcut: AppConfig.defaultSettingsShortcut, key: Keys.settingsShortcut) var settingsShortcut:
     ShortcutBinding
-  @Preference(.ignoredApps, AppConfiguration.defaultIgnoredApps, key: Keys.ignoredApps) var ignoredApps: [String]
+  @Preference(.ignoredApps, AppConfig.defaultIgnoredApps, key: Keys.ignoredApps) var ignoredApps: [String]
   @Preference(.ignoredItemKinds, [], key: Keys.ignoredItemKinds, normalize: SettingsModel.normalizedIgnoredItemKinds)
   var ignoredItemKindsRaw: [Int]
-  @Preference(.pollProfile, raw: AppConfiguration.defaultPollProfile, key: Keys.pollProfile) var pollProfileRaw:
-    AppConfiguration.PollProfile
+  @Preference(.pollProfile, raw: AppConfig.defaultPollProfile, key: Keys.pollProfile) var pollProfileRaw: AppConfig.PollProfile
   @Preference(.keepFirstImage, true, key: Keys.keepFirstImage) var keepFirstImage: Bool
   @Preference(.excludeSensitive, true, key: Keys.excludeSensitive) var excludeSensitive: Bool
   @Preference(.pauseCapture, false, key: Keys.pauseCapture) var pauseCapture: Bool
@@ -172,12 +149,7 @@ final class SettingsModel {
   private(set) var customCollectionNames: [String]
   private(set) var collectionColorHexes: [String: String]
   private(set) var collectionIcons: [String: String]
-  private(set) var launchAtLoginErrorMessage: String = ""
-  private(set) var accessibilityPermissionStatusMessage: String = ""
-  private(set) var captureStatusMessage: String = ""
-  private(set) var shortcutStatusMessage: String = ""
-  private(set) var pasteStatusMessage: String = ""
-  private(set) var cloudSyncStatusMessage: String = ""
+  private var feedback: [Feedback: String] = [:]
   private(set) var onboardingCompleted: Bool
   private(set) var accessibilityNoticeShown: Bool
 
@@ -191,8 +163,7 @@ final class SettingsModel {
     customCollectionNames = Self.normalizedCollectionNames(defaults.stringArray(forKey: Keys.customCollectionNames) ?? [])
     collectionColorHexes = Self.normalizedMetadata(
       defaults.dictionary(forKey: Keys.collectionColorHexes), normalize: Self.normalizedHexColor)
-    collectionIcons = Self.normalizedMetadata(
-      defaults.dictionary(forKey: Keys.collectionIcons), normalize: ClipboardCollectionIcon.normalized)
+    collectionIcons = Self.normalizedMetadata(defaults.dictionary(forKey: Keys.collectionIcons), normalize: PinboardIcon.normalized)
     onboardingCompleted = defaults.object(forKey: Keys.onboardingCompleted) as? Bool ?? existingProfile
     accessibilityNoticeShown = defaults.object(forKey: Keys.accessibilityNoticeShown) as? Bool ?? false
     let preferences: [any PreferenceLoading] = [
@@ -205,7 +176,7 @@ final class SettingsModel {
     for preference in preferences {
       preference.load(defaults)
       preference.onChange = { [weak self] change in
-        if change == .cloudSync { self?.cloudSyncStatusMessage = "" }
+        if change == .cloudSync { self?.feedback[.backup] = "" }
         self?.notify(change)
       }
     }
@@ -229,18 +200,12 @@ final class SettingsModel {
 
   private func notify(_ change: Change) { for observer in observers { observer(change) } }
 
-  func setLaunchAtLoginStatus(message: String) { setStatus(\.launchAtLoginErrorMessage, message: message, change: .status) }
+  func status(_ source: Feedback) -> String { feedback[source] ?? "" }
 
-  func setAccessibilityPermissionStatus(message: String) {
-    setStatus(\.accessibilityPermissionStatusMessage, message: message, change: .status)
-  }
-
-  func setCaptureStatus(message: String) { setStatus(\.captureStatusMessage, message: message, change: .captureStatus) }
-
-  private func setStatus(_ key: ReferenceWritableKeyPath<SettingsModel, String>, message: String, change: Change) {
-    guard self[keyPath: key] != message else { return }
-    self[keyPath: key] = message
-    notify(change)
+  func setStatus(_ source: Feedback, _ message: String) {
+    guard status(source) != message else { return }
+    feedback[source] = message
+    notify(source == .capture ? .captureStatus : .status)
   }
 
   func markAccessibilityNoticeShown() {
@@ -256,14 +221,8 @@ final class SettingsModel {
     notify(.other)
   }
 
-  func setShortcutStatus(message: String) { setStatus(\.shortcutStatusMessage, message: message, change: .status) }
-
-  func setPasteStatus(message: String) { setStatus(\.pasteStatusMessage, message: message, change: .status) }
-
-  func setCloudSyncStatus(message: String) { setStatus(\.cloudSyncStatusMessage, message: message, change: .status) }
-
   @discardableResult func ensureCollection(named name: String, colorHex: String? = nil, icon: String? = nil) -> String? {
-    guard let normalizedName = ClipboardCollectionDefaults.normalizedName(name) else { return nil }
+    guard let normalizedName = PinboardNames.normalizedName(name) else { return nil }
     let existingName = customCollectionNames.first { $0.caseInsensitiveCompare(normalizedName) == .orderedSame }
     let canonicalName = existingName ?? normalizedName
     var changed = false
@@ -274,7 +233,7 @@ final class SettingsModel {
     }
 
     changed = writeMetadata(\.collectionColorHexes, name: canonicalName, value: Self.normalizedHexColor(colorHex)) || changed
-    changed = writeMetadata(\.collectionIcons, name: canonicalName, value: ClipboardCollectionIcon.normalized(icon)) || changed
+    changed = writeMetadata(\.collectionIcons, name: canonicalName, value: PinboardIcon.normalized(icon)) || changed
 
     if changed { storeAndNotify(.collections) }
     return normalizedName
@@ -285,7 +244,7 @@ final class SettingsModel {
 
   private typealias MetadataKey = ReferenceWritableKeyPath<SettingsModel, [String: String]>
   private func metadata(_ field: MetadataKey, name: String) -> String? {
-    guard let name = ClipboardCollectionDefaults.normalizedName(name) else { return nil }
+    guard let name = PinboardNames.normalizedName(name) else { return nil }
     return self[keyPath: field][name] ?? self[keyPath: field].first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
   }
 
@@ -311,8 +270,8 @@ final class SettingsModel {
   @discardableResult func updateCollection(named currentName: String, to newName: String, colorHex: String? = nil, icon: String? = nil)
     -> String?
   {
-    guard let normalizedCurrentName = ClipboardCollectionDefaults.normalizedName(currentName),
-      let normalizedNewName = ClipboardCollectionDefaults.normalizedName(newName)
+    guard let normalizedCurrentName = PinboardNames.normalizedName(currentName),
+      let normalizedNewName = PinboardNames.normalizedName(newName)
     else { return nil }
 
     let oldIndex = customCollectionNames.firstIndex { $0.caseInsensitiveCompare(normalizedCurrentName) == .orderedSame }
@@ -343,15 +302,14 @@ final class SettingsModel {
       moveMetadata(\.collectionColorHexes, from: oldCanonicalName, to: targetCanonicalName, value: Self.normalizedHexColor(colorHex))
       || changed
     changed =
-      moveMetadata(\.collectionIcons, from: oldCanonicalName, to: targetCanonicalName, value: ClipboardCollectionIcon.normalized(icon))
-      || changed
+      moveMetadata(\.collectionIcons, from: oldCanonicalName, to: targetCanonicalName, value: PinboardIcon.normalized(icon)) || changed
 
     if changed { storeAndNotify(.collections) }
     return targetCanonicalName
   }
 
   @discardableResult func deleteCollection(named name: String) -> String? {
-    guard let normalizedName = ClipboardCollectionDefaults.normalizedName(name) else { return nil }
+    guard let normalizedName = PinboardNames.normalizedName(name) else { return nil }
     var changed = false
     if let index = customCollectionNames.firstIndex(where: { $0.caseInsensitiveCompare(normalizedName) == .orderedSame }) {
       customCollectionNames.remove(at: index)
@@ -364,7 +322,7 @@ final class SettingsModel {
     return normalizedName
   }
 
-  var pollProfile: AppConfiguration.PollProfile {
+  var pollProfile: AppConfig.PollProfile {
     get { pollProfileRaw }
     set { pollProfileRaw = newValue }
   }
@@ -375,17 +333,17 @@ final class SettingsModel {
   }
 
   private static func clampedMaxHistoryItems(_ count: Int) -> Int {
-    max(AppConfiguration.minHistoryLength, min(AppConfiguration.maxHistoryLength, count))
+    max(AppConfig.minHistoryLength, min(AppConfig.maxHistoryLength, count))
   }
 
   private static func clampedImageCacheMaxBytes(_ bytes: Int64) -> Int64 {
-    max(AppConfiguration.minCacheMaxBytes, min(AppConfiguration.maxCacheMaxBytes, bytes))
+    max(AppConfig.minCacheMaxBytes, min(AppConfig.maxCacheMaxBytes, bytes))
   }
 
   private static func normalizedCollectionNames(_ names: [String]) -> [String] {
     var normalized: [String] = []
     for name in names {
-      guard let value = ClipboardCollectionDefaults.normalizedName(name) else { continue }
+      guard let value = PinboardNames.normalizedName(name) else { continue }
       guard !normalized.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) else { continue }
       normalized.append(value)
     }
@@ -393,21 +351,20 @@ final class SettingsModel {
   }
 
   private static let userVisibleItemKindRawValues: Set<Int> = [
-    ClipboardItemKind.text.rawValue, ClipboardItemKind.code.rawValue, ClipboardItemKind.url.rawValue, ClipboardItemKind.image.rawValue,
-    ClipboardItemKind.color.rawValue, ClipboardItemKind.audio.rawValue, ClipboardItemKind.video.rawValue,
-    ClipboardItemKind.richText.rawValue, ClipboardItemKind.pdf.rawValue, ClipboardItemKind.file.rawValue,
+    ClipKind.text.rawValue, ClipKind.code.rawValue, ClipKind.url.rawValue, ClipKind.image.rawValue, ClipKind.color.rawValue,
+    ClipKind.audio.rawValue, ClipKind.video.rawValue, ClipKind.richText.rawValue, ClipKind.pdf.rawValue, ClipKind.file.rawValue,
   ]
 
   private static func normalizedIgnoredItemKinds(_ values: [Int]) -> [Int] {
     let ignoredVisibleKinds = Set(values).intersection(userVisibleItemKindRawValues)
     guard userVisibleItemKindRawValues.isSubset(of: ignoredVisibleKinds) else { return values }
-    return values.filter { $0 != ClipboardItemKind.text.rawValue }
+    return values.filter { $0 != ClipKind.text.rawValue }
   }
 
   private static func normalizedMetadata(_ raw: [String: Any]?, normalize: (String?) -> String?) -> [String: String] {
     var values: [String: String] = [:]
     for (name, value) in raw ?? [:] {
-      guard let name = ClipboardCollectionDefaults.normalizedName(name), let value = normalize(value as? String) else { continue }
+      guard let name = PinboardNames.normalizedName(name), let value = normalize(value as? String) else { continue }
       values[name] = value
     }
     return values

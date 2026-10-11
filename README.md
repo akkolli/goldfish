@@ -10,7 +10,7 @@ See the [user guide](docs/QUICK_START.md) for controls and shortcuts, [interface
 
 Requirements: macOS 13+, Xcode 16+ command line tools with the macOS 15+ SDK, and Python 3.9+. Goldfish uses Swift Package Manager, AppKit, Carbon, SQLite, and system frameworks, with no external packages.
 
-`main` is authoritative. Inspect all worktrees, HEAD, and the main checkout's status before changing, building, or installing. The legacy refactor branch is preserved history, not the production baseline. Quit Goldfish before clipboard tests.
+`main` is authoritative. Inspect all worktrees, HEAD, and the main checkout's status before changing, building, or installing. The legacy refactor branch is preserved history, not the production baseline. Quit Goldfish before clipboard tests. Native focus tests require an unlocked Mac; `GOLDFISH_TEST_SCREEN` selects the display for interface tests.
 
 ```bash
 ./scripts/check.sh

@@ -51,8 +51,7 @@ final class IgnoredAppsEditor: NSStackView, NSTableViewDataSource, NSTableViewDe
     let icon = NSImageView(
       image: url.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)
         ?? NSImage())
-    icon.widthAnchor.constraint(equalToConstant: 18).isActive = true
-    icon.heightAnchor.constraint(equalToConstant: 18).isActive = true
+    icon.constrainSize(width: 18, height: 18)
     let rowView = NativeUI.stack([icon, label], axis: .horizontal, spacing: 7)
     rowView.setAccessibilityLabel(name == rule ? "Matching rule: \(rule)" : "\(name), \(rule)")
     return rowView

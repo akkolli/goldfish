@@ -3,8 +3,7 @@ import Vision
 
 enum ImageTextExtractor {
   static func recognizedText(in image: NSImage) -> String? {
-    let boundedImage = image.resized(
-      to: CGSize(width: AppConfiguration.maxFullImagePixelSize, height: AppConfiguration.maxFullImagePixelSize))
+    let boundedImage = image.resized(to: CGSize(width: AppConfig.maxFullImagePixelSize, height: AppConfig.maxFullImagePixelSize))
     guard let cgImage = boundedImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
 
     let request = VNRecognizeTextRequest()
@@ -23,7 +22,7 @@ enum ImageTextExtractor {
     guard let text else { return nil }
     let normalized = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     guard !normalized.isEmpty else { return nil }
-    return String(normalized.prefix(AppConfiguration.maxRecognizedImageTextLength))
+    return String(normalized.prefix(AppConfig.maxRecognizedImageTextLength))
   }
 
   private static func normalized(_ lines: [String]) -> String? {

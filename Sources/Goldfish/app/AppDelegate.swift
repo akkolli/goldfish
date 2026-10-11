@@ -32,13 +32,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     CapturePauseDuration(title: "1 hour", seconds: 60 * 60, symbolName: "clock"),
   ]
 
-  private var cacheService: ClipboardCacheService!
-  private var cloudSyncService: ClipboardCloudSyncService!
+  private var cacheService: MediaCache!
+  private var cloudSyncService: CloudBackup!
   private var settings: SettingsModel!
-  private var soundService: ClipboardSoundService!
-  private var store: ClipboardStore!
-  private var monitor: ClipboardMonitorService!
-  private var panelController: ClipboardPanelController!
+  private var soundService: TransferSounds!
+  private var store: HistoryStore!
+  private var monitor: ClipboardMonitor!
+  private var panelController: ShelfController!
   private var settingsController: SettingsWindowController!
   private var onboardingController: OnboardingWindowController?
   private var shortcutManager: ShortcutManager!
@@ -47,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusMenu: NSMenu?
   private var pauseResumeTimer: Timer?
   private var cloudSyncPushWorkItem: DispatchWorkItem?
-  private let dataCoordinator = ClipboardDataCoordinator()
+  private let dataCoordinator = DataCoordinator()
   private let cloudSyncStateLock = NSLock()
   private var suppressCloudSyncPush = false
   private var cloudSyncOperationGeneration = 0
@@ -55,13 +55,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     settings = SettingsModel()
-    soundService = ClipboardSoundService(settings: settings)
-    cacheService = ClipboardCacheService()
-    cloudSyncService = ClipboardCloudSyncService()
-    store = ClipboardStore(settings: settings, cacheService: cacheService)
+    soundService = TransferSounds(settings: settings)
+    cacheService = MediaCache()
+    cloudSyncService = CloudBackup()
+    store = HistoryStore(settings: settings, cacheService: cacheService)
     Self.restoreCollectionMetadata(settings: settings, store: store)
-    monitor = ClipboardMonitorService(store: store, cacheService: cacheService, settings: settings)
-    panelController = ClipboardPanelController(
+    monitor = ClipboardMonitor(store: store, cacheService: cacheService, settings: settings)
+    panelController = ShelfController(
       store: store, settings: settings, cacheService: cacheService, dataCoordinator: dataCoordinator,
       pollClipboardNow: { [weak self] in
         guard let self, self.settings.onboardingCompleted else { return }
@@ -81,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lifecycleService = AppLifecycleService()
     shortcutManager = ShortcutManager(
       onOpenClipboardPanel: { [weak self] in DispatchQueue.main.async { self?.showClipboardPanel() } },
-      onStatusChange: { [weak self] status in DispatchQueue.main.async { self?.settings.setShortcutStatus(message: status.message) } },
+      onStatusChange: { [weak self] status in DispatchQueue.main.async { self?.settings.setStatus(.shortcut, status.message) } },
       openShortcut: settings.openShortcut)
     bindSettings()
     bindCloudSync()
@@ -160,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     panelController.createTextClip()
   }
 
-  static func restoreCollectionMetadata(settings: SettingsModel, store: ClipboardStore) {
+  static func restoreCollectionMetadata(settings: SettingsModel, store: HistoryStore) {
     // Existing assignments are user data, including boards with old preset names.
     guard store.loadWarningMessage == nil else { return }
     for name in Set(store.items.compactMap(\.collectionName)) { settings.ensureCollection(named: name) }
@@ -206,9 +206,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     Self.makeStatusMenu(
       presentation: Self.statusMenuPresentation(
         historyCount: store.items.count, isCapturePaused: settings.pauseCapture, pauseCaptureUntil: settings.pauseCaptureUntil,
-        captureStatus: settings.captureStatusMessage, pasteStatus: settings.pasteStatusMessage,
-        shortcutStatus: settings.shortcutStatusMessage, accessibilityStatus: settings.accessibilityPermissionStatusMessage,
-        launchAtLoginStatus: settings.launchAtLoginErrorMessage, onboardingCompleted: settings.onboardingCompleted),
+        captureStatus: settings.status(.capture), pasteStatus: settings.status(.paste),
+        shortcutStatus: settings.status(.shortcut), accessibilityStatus: settings.status(.accessibility),
+        launchAtLoginStatus: settings.status(.launch), onboardingCompleted: settings.onboardingCompleted),
       isCapturePaused: settings.pauseCapture, openShortcut: settings.openShortcut, settingsShortcut: settings.settingsShortcut, target: self
     )
   }
@@ -501,7 +501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       self.scheduleCloudSyncPush()
     }
 
-    if settings.iCloudSyncEnabled { applyCloudSyncSetting() } else { settings.setCloudSyncStatus(message: "iCloud Backup is off.") }
+    if settings.iCloudSyncEnabled { applyCloudSyncSetting() } else { settings.setStatus(.backup, "iCloud Backup is off.") }
   }
 
   private func handleSettingsChange(_ change: SettingsModel.Change) {
@@ -511,7 +511,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case .imageCacheMaxBytes: cacheService.purgeIfNeeded(maxBytes: settings.imageCacheMaxBytes)
     case .openShortcut:
       let status = shortcutManager.reconfigure(openShortcut: settings.openShortcut)
-      settings.setShortcutStatus(message: status.message)
+      settings.setStatus(.shortcut, status.message)
       refreshStatusItem()
       configureMainMenu()
     case .settingsShortcut:
@@ -542,16 +542,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     guard settings.iCloudSyncEnabled else {
       setCloudSyncPushSuppressed(false)
-      settings.setCloudSyncStatus(message: "iCloud Backup is off.")
+      settings.setStatus(.backup, "iCloud Backup is off.")
       return
     }
 
-    settings.setCloudSyncStatus(message: "Checking iCloud Backup…")
+    settings.setStatus(.backup, "Checking iCloud Backup…")
     setCloudSyncPushSuppressed(true)
     dataCoordinator.perform({ [cloudSyncService = self.cloudSyncService!] in cloudSyncService.status() }) { [weak self] status in
       guard let self, generation == self.cloudSyncOperationGeneration, self.settings.iCloudSyncEnabled else { return }
       self.setCloudSyncPushSuppressed(false)
-      self.settings.setCloudSyncStatus(message: status.message)
+      self.settings.setStatus(.backup, status.message)
       if status.isAvailable && status.lastModifiedAt == nil { self.scheduleCloudSyncPush(after: 1.0) }
     }
   }
@@ -572,8 +572,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     dataCoordinator.perform(operation) { [weak self] result in
       guard let self, generation == self.cloudSyncOperationGeneration, self.settings.iCloudSyncEnabled else { return }
       switch result {
-      case .success(let summary): self.settings.setCloudSyncStatus(message: "Backed up \(summary.itemCount) clips to iCloud.")
-      case .failure(let error): self.settings.setCloudSyncStatus(message: "iCloud Backup failed: \(error.localizedDescription)")
+      case .success(let summary): self.settings.setStatus(.backup, "Backed up \(summary.itemCount) clips to iCloud.")
+      case .failure(let error): self.settings.setStatus(.backup, "iCloud Backup failed: \(error.localizedDescription)")
       }
     }
   }
@@ -592,7 +592,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func applyCapturePauseSetting(now: Date = Date()) {
     guard settings.onboardingCompleted else {
-      settings.setCaptureStatus(message: "Capture is off until you finish setup.")
+      settings.setStatus(.capture, "Capture is off until you finish setup.")
       return
     }
     if Self.shouldResumeExpiredCapturePause(isCapturePaused: settings.pauseCapture, pauseCaptureUntil: settings.pauseCaptureUntil, now: now)
@@ -665,11 +665,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let result = lifecycleService.applyLaunchAtLogin(shouldLaunch)
     switch result {
     case .success:
-      settings.setLaunchAtLoginStatus(message: "")
+      settings.setStatus(.launch, "")
       if settings.launchAtLogin != shouldLaunch { settings.launchAtLogin = shouldLaunch }
-    case .noChange: settings.setLaunchAtLoginStatus(message: "")
+    case .noChange: settings.setStatus(.launch, "")
     case .failure(let message):
-      settings.setLaunchAtLoginStatus(message: "Launch-at-login failed: \(message)")
+      settings.setStatus(.launch, "Launch-at-login failed: \(message)")
       let actualState = lifecycleService.isEnabled()
       if settings.launchAtLogin != actualState { settings.launchAtLogin = actualState }
     }
@@ -677,10 +677,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func refreshAccessibilityPermissionMessage() {
     if AccessibilityPermissionService.isTrusted {
-      settings.setAccessibilityPermissionStatus(message: "")
+      settings.setStatus(.accessibility, "")
     } else {
-      settings.setAccessibilityPermissionStatus(
-        message: "Accessibility permission not granted. Capture still works; paste falls back to copy.")
+      settings.setStatus(.accessibility, "Accessibility permission not granted. Capture still works; paste falls back to copy.")
     }
     refreshStatusItem()
   }
@@ -752,7 +751,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private func presentHistoryLoadWarningIfNeeded() {
     guard !didPresentHistoryLoadWarning, let warning = store.loadWarningMessage else { return }
     didPresentHistoryLoadWarning = true
-    settings.setCaptureStatus(message: "Error: Some saved history could not be decrypted.")
+    settings.setStatus(.capture, "Error: Some saved history could not be decrypted.")
 
     // Let applicationDidFinishLaunching return before entering a modal loop.
     // LaunchServices and UI automation otherwise see an app that never

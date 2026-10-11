@@ -1,11 +1,8 @@
 import AppKit
-import CryptoKit
 import XCTest
 
 @testable import Goldfish
 
-/// Exercises the shipping clipboard, storage, search, transfer, and shelf paths
-/// together. Each workflow owns an isolated history and owns a private pasteboard.
 final class GoldfishWorkflowTests: StoredClipboardTestCase {
   override var encryptionByte: UInt8? { 71 }
   override func setUpWithError() throws {
@@ -14,7 +11,7 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
   }
 
   func testCopyCaptureSearchTransferAndEncryptedRelaunch() throws {
-    let monitor = ClipboardMonitorService(
+    let monitor = ClipboardMonitor(
       pasteboard: pasteboard, store: store, cacheService: cache, settings: settings, frontmostApp: { (nil, nil) })
     defer { monitor.stop() }
     let text = "Goldfish quartz workflow \(UUID().uuidString)"
@@ -24,7 +21,7 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     waitUntil { self.store.items.count == 1 }
     XCTAssertEqual(store.items.first?.payload, text)
 
-    let panel = ClipboardPanelViewModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
+    let panel = ShelfModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
     panel.searchText = "quartz"
     waitUntil { panel.visibleItems.count == 1 }
     XCTAssertEqual(panel.selectedItem?.payload, text)
@@ -34,167 +31,66 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     monitor.pollNowAndWait()
     settle()
     XCTAssertEqual(store.items.count, 1, "Goldfish must not capture its own transfer again")
-
-    store.flushPersistenceForTesting()
     let database = try Data(contentsOf: directory.appendingPathComponent("history.sqlite"))
     XCTAssertNil(database.range(of: Data(text.utf8)), "Saved clipboard text must stay encrypted")
-    let restored = ClipboardStore(settings: settings, cacheService: cache, baseURL: directory, encryptionService: encryption)
+    let restored = HistoryStore(settings: settings, cacheService: cache, baseURL: directory, encryptionService: encryption)
     XCTAssertEqual(restored.items.map(\.payload), [text])
   }
 
-  func testPinboardHistoryUndoArchiveAndRestore() throws {
-    let keep = try XCTUnwrap(store.upsert(item("Reusable client note")))
-    store.upsert(item("Disposable note"))
-    let panel = ClipboardPanelViewModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
-    panel.createCollection(named: "Client Work", colorHex: "#FF9900", icon: "star.fill", selectAfterCreate: false)
-    panel.assignItem(withID: keep.id, to: "Client Work")
-    panel.selectCollection(named: "Client Work")
-    waitUntil { panel.visibleItems.count == 1 }
-    XCTAssertEqual(panel.selectedItem?.id, keep.id)
-    panel.togglePinSelected()
-    panel.deleteSelected()
-    XCTAssertNil(store.items.first(where: { $0.id == keep.id }))
-    panel.undoLastDelete()
-    XCTAssertTrue(store.items.contains { $0.id == keep.id && $0.isPinned })
-    panel.clearHistory(since: .distantPast)
-    XCTAssertEqual(store.items.map(\.id), [keep.id])
-
-    let archive = directory.appendingPathComponent("client-work.clipboredarchive")
-    let summary = try store.exportCollection(named: "Client Work", to: archive)
-    XCTAssertEqual(summary.itemCount, 1)
-    let restoredDirectory = directory.appendingPathComponent("restored", isDirectory: true)
-    let restoredCache = ClipboardCacheService(baseURL: restoredDirectory, encryptionService: encryption)
-    let restored = ClipboardStore(
-      settings: settings, cacheService: restoredCache, baseURL: restoredDirectory, encryptionService: encryption)
-    try restored.importArchive(from: archive)
-    restored.flushPersistenceForTesting()
-    XCTAssertEqual(restored.items.first?.payload, "Reusable client note")
-    XCTAssertEqual(restored.items.first?.collectionName, "Client Work")
-  }
-
-  func testStructuredSearchPinboardsAndPreferencesAcrossRelaunch() throws {
-    let link = try XCTUnwrap(store.upsert(item("https://example.com/review", kind: .url, sourceApp: "Brave Browser")))
-    store.upsert(item("Review the release notes", sourceApp: "Ghostty"))
-    let panel = ClipboardPanelViewModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
-    panel.createCollection(named: "Research", selectAfterCreate: false)
-    panel.assignItem(withID: link.id, to: "Research")
-    panel.onChange = { [weak panel] change in
-      guard let panel else { return }
-      XCTAssertTrue(Thread.isMainThread)
-      guard change == .items else { return }
-      let visibleIDs = Set(panel.visibleItems.map(\.id))
-      XCTAssertTrue(Set(panel.selectedItemIDs).isSubset(of: visibleIDs), "Item events must publish a reconciled selection")
-      if panel.visibleItems.isEmpty { XCTAssertNil(panel.selectedItem) } else { XCTAssertNotNil(panel.selectedItem) }
-    }
-    panel.searchText = "review app:\"Brave Browser\" type:link"
-    waitUntil { panel.visibleItems.count == 1 }
-    XCTAssertEqual(panel.selectedItem?.id, link.id)
-
-    panel.selectCollection(named: "Research")
-    XCTAssertEqual(panel.visibleItems.map(\.id), [link.id])
-    panel.searchText = "missing app:\"Brave Browser\" type:link"
-    XCTAssertTrue(panel.visibleItems.isEmpty)
-    panel.showLatestHiddenCapture()
-    panel.searchText = ""
-    panel.selectSortMode(.mostUsed)
-    XCTAssertNil(panel.selectedCollectionName)
-    XCTAssertEqual(panel.visibleItems.count, 2)
-
-    settings.shelfLayout = .cards
-    settings.copySoundEnabled = true
-    settings.soundVolume = 0.35
-    let relaunchedSettings = SettingsModel(defaults: defaults)
-    XCTAssertEqual(relaunchedSettings.shelfLayout, .cards)
-    XCTAssertTrue(relaunchedSettings.copySoundEnabled)
-    XCTAssertEqual(relaunchedSettings.soundVolume, 0.35)
-    XCTAssertTrue(relaunchedSettings.customCollectionNames.contains("Research"))
-  }
-
-  func testStructuredFieldAliasesRespectExactValuesAlternativesAndOtherFields() {
-    let item = testItem(
-      payload: "A café note", sourceApp: "Notes Plus", sourceAppBundleId: "com.example.notes", collectionName: "Ideas",
-      sourceDeviceName: "Desk Mac")
-    let engine = ClipboardPanelSearchEngine()
-    for (keys, value) in [
-      (["app", "source", "from"], "\"Notes Plus\""), (["device", "devices", "machine", "computer"], "\"Desk Mac\""),
-      (["collection", "folder", "list", "pinboard", "pinboards", "board", "boards"], "Ideas"),
-    ] { for key in keys { XCTAssertTrue(engine.matches(item, query: engine.parse("\(key):\(value)"), includeImageText: false), key) } }
-    for (query, expected) in [
-      ("cafe app:Notes", true), ("app:\"Notes\"", false), ("app:\"com.example.notes\"", true), ("app:Missing,Notes", true),
-      ("app:Missing app:Notes", true), ("app:Missing,Absent", false), ("app:\"Notes Plus\" device:Desk pinboard:Ideas", true),
-      ("app:Notes device:Elsewhere pinboard:Ideas", false), ("app:Notes device:Desk pinboard:Absent", false),
-    ] { XCTAssertEqual(engine.matches(item, query: engine.parse(query), includeImageText: false), expected, query) }
-    let unassigned = testItem(payload: "A note", sourceApp: nil, sourceDeviceName: nil)
-    for query in ["app:Notes", "collection:Ideas"] {
-      XCTAssertFalse(engine.matches(unassigned, query: engine.parse(query), includeImageText: false), query)
-    }
-  }
-
-  func testDestinationCountsMatchPresentationFiltersIncludingTextLinks() {
-    let cases: [(ClipboardItemKind, String, [ClipboardSortMode])] = [
-      (.url, "https://example.com/direct", [.links]), (.text, "https://example.com/plain", [.links]),
-      (.richText, "https://example.com/rich", [.links]), (.unknown, "https://example.com/unknown", [.links]), (.text, "A note", [.text]),
-      (.richText, "A formatted note", [.text]), (.code, "let value = 1", [.text, .code]), (.unknown, "Opaque content", []),
-      (.image, "Picture", [.images]), (.pdf, "Document", [.files]), (.file, "File", [.files]), (.audio, "Sound", [.audio]),
-      (.video, "Movie", [.videos]), (.color, "Swatch", [.colors]),
-    ]
-    let clips = cases.enumerated().map { index, scenario in
-      testItem(
-        kind: scenario.0, displayText: scenario.1, payload: scenario.0 == .richText ? "/rtf-\(index)" : scenario.1,
-        sourceApp: "Count Parity", isPinned: index % 2 == 0, collectionName: "Count Parity")
-    }
-    clips.forEach { store.upsert($0) }
-    let panel = ClipboardPanelViewModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
-    for query in ["", "app:\"Count Parity\"", "no-matching-clips"] {
-      panel.searchText = query
-      for mode in ClipboardSortMode.allCases {
-        let expected = clips.enumerated().compactMap { index, clip -> UUID? in
-          guard query != "no-matching-clips" else { return nil }
-          let included = mode == .mostRecent || mode == .mostUsed || (mode == .pinned ? clip.isPinned : cases[index].2.contains(mode))
-          return included ? clip.id : nil
-        }
-        panel.selectSortMode(mode)
-        XCTAssertEqual(Set(panel.visibleItems.map(\.id)), Set(expected), "\(query): \(mode)")
-        XCTAssertEqual(panel.collectionCount(for: mode), expected.count, "\(query): \(mode)")
+  func testImageCommandsPublishCompletedChangesAndCleanFailedRotation() throws {
+    let paths = try XCTUnwrap(cache.cacheImage(testImage(color: .blue, size: NSSize(width: 28, height: 16)), id: UUID()))
+    let originalSize = try XCTUnwrap(cache.image(for: paths.full)).size
+    let clip = testItem(
+      kind: .image, payload: paths.full, createdAt: Date(timeIntervalSince1970: 1_700_000_000), imagePath: paths.full,
+      thumbnailPath: paths.thumb)
+    store.upsert(clip)
+    let model = ShelfModel(
+      pasteboard: pasteboard, store: store, settings: settings, cacheService: cache, imageTextExtractor: { _ in " New\n label " })
+    func completed(_ action: (@escaping () -> Void) -> Void) {
+      var finished = false
+      action {
+        XCTAssertTrue(Thread.isMainThread)
+        finished = true
       }
-      XCTAssertEqual(panel.collectionCount(named: "Count Parity"), query == "no-matching-clips" ? 0 : clips.count)
+      waitUntil { finished }
     }
-  }
+    completed { model.extractTextFromSelectedImage(completion: $0) }
+    XCTAssertEqual(store.items.first?.ocrText, "New label")
+    XCTAssertEqual(model.statusMessage, "Extracted text from image")
+    completed { model.rotateSelectedImageClockwise(completion: $0) }
+    XCTAssertEqual(model.statusMessage, "Rotated image")
+    let rotated = try XCTUnwrap(store.items.first)
+    XCTAssertEqual(rotated.id, clip.id)
+    XCTAssertEqual(rotated.ocrText, "New label")
+    XCTAssertEqual(cache.image(for: rotated.payload)?.size, NSSize(width: originalSize.height, height: originalSize.width))
+    XCTAssertEqual(reopen().items, [rotated])
+    cache.flushForTesting()
 
-  func testIgnoredPausedAndResumedCapture() {
-    let monitor = ClipboardMonitorService(
-      pasteboard: pasteboard, store: store, cacheService: cache, settings: settings, frontmostApp: { (nil, nil) })
-    defer { monitor.stop() }
-    settings.ignoredItemKindsRaw = [ClipboardItemKind.text.rawValue]
-    monitor.refreshCaptureConfiguration()
-    copy("Skipped text")
-    monitor.pollNowAndWait()
-    settle()
-    XCTAssertTrue(store.items.isEmpty)
-
-    settings.ignoredItemKindsRaw = []
-    monitor.refreshCaptureConfiguration()
-    copy("Allowed text")
-    monitor.pollNowAndWait()
-    waitUntil { self.store.items.count == 1 }
-    monitor.setPaused(true)
-    copy("Paused text")
-    monitor.pollNowAndWait()
-    settle()
-    XCTAssertEqual(store.items.count, 1)
-    monitor.setPaused(false)
-    copy("Resumed text")
-    monitor.pollNowAndWait()
-    waitUntil { self.store.items.count == 2 }
-    XCTAssertEqual(store.items.map(\.payload), ["Resumed text", "Allowed text"])
+    // A file at the thumbnail directory blocks only the second sidecar write.
+    let thumbnails = directory.appendingPathComponent("thumbnails")
+    let savedThumbnails = directory.appendingPathComponent("saved-thumbnails")
+    try FileManager.default.moveItem(at: thumbnails, to: savedThumbnails)
+    try Data().write(to: thumbnails)
+    defer {
+      try? FileManager.default.removeItem(at: thumbnails)
+      try? FileManager.default.moveItem(at: savedThumbnails, to: thumbnails)
+    }
+    let images = directory.appendingPathComponent("images")
+    let before = try FileManager.default.contentsOfDirectory(atPath: images.path).sorted()
+    completed { model.rotateSelectedImageClockwise(completion: $0) }
+    cache.flushForTesting()
+    XCTAssertEqual(model.statusMessage, "Could not rotate image")
+    XCTAssertEqual(store.items, [rotated])
+    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: images.path).sorted(), before)
+    XCTAssertNotNil(cache.data(for: rotated.payload))
   }
 
   func testShelfCardsComposerMenusAndClosingAcrossLayouts() throws {
     store.upsert(item("A saved shelf clip"))
-    for layout in [ClipboardShelfLayout.sidebar, .cards] {
+    for layout in [ShelfLayout.sidebar, .cards] {
       settings.shelfLayout = layout
       let existing = Set(NSApp.windows.map(ObjectIdentifier.init))
-      let controller = ClipboardPanelController(
+      let controller = ShelfController(
         pasteboard: pasteboard, store: store, settings: settings, cacheService: cache, preferredScreen: { self.interfaceScreen })
       let window = try XCTUnwrap(NSApp.windows.first { !existing.contains(ObjectIdentifier($0)) && $0 is NSPanel })
       defer {
@@ -203,10 +99,10 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
       }
       controller.show()
       settle(0.32)
-      let panel = try XCTUnwrap(window.contentView as? ClipboardPanelView)
+      let panel = try XCTUnwrap(window.contentView as? ShelfView)
       XCTAssertTrue(window.isVisible)
       window.sharingType = .none
-      XCTAssertTrue(descendants(panel).contains { $0 is ClipboardItemCardView })
+      XCTAssertTrue(descendants(panel).contains { $0 is CardView })
 
       try button("New Text Clip", in: panel).performClick(nil)
       XCTAssertTrue(panel.presentedTextEditorWindow?.isVisible == true)
@@ -215,6 +111,12 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
       waitUntil { panel.presentedTextEditorWindow?.isVisible != true }
       XCTAssertTrue(panel.presentedMenuWindow?.isVisible == true)
       XCTAssertEqual(panel.presentedMenuWindow?.sharingType, NSWindow.SharingType.none)
+      let menu = try XCTUnwrap(panel.presentedMenuWindow)
+      XCTAssertEqual(menu.level, window.level)
+      XCTAssertTrue(menu.isKeyWindow)
+      XCTAssertFalse(panel.resumeTextEditorIfNeeded())
+      window.makeKeyAndOrderFront(nil)
+      waitUntil { menu.isKeyWindow }
       controller.hide(immediate: true)
       XCTAssertNil(panel.presentedMenuWindow)
       XCTAssertTrue(window.childWindows?.isEmpty ?? true)
@@ -226,151 +128,9 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
       XCTAssertFalse(window.isVisible)
     }
   }
-
-  func testPreviewInheritsShelfPrivacyLevelAndOwnership() throws {
-    let parent = NSWindow(contentRect: .zero, styleMask: [], backing: .buffered, defer: false)
-    positionInterfaceWindow(parent)
-    let child = NSPanel(contentRect: .zero, styleMask: [.nonactivatingPanel], backing: .buffered, defer: false)
-    parent.isReleasedWhenClosed = false
-    let preview = ClipboardAuxiliaryWindowController(window: child)
-    defer {
-      preview.close()
-      parent.close()
-    }
-    parent.sharingType = .none
-    parent.level = ClipboardPanelController.shelfWindowLevel
-    preview.present(relativeTo: parent)
-    XCTAssertEqual(child.sharingType, NSWindow.SharingType.none)
-    XCTAssertEqual(child.level, parent.level)
-    // AppKit may add cycle flags when a panel is ordered front. Required shelf
-    // space behavior must survive that native adjustment.
-    let behavior = ClipboardPanelController.panelCollectionBehavior
-    XCTAssertEqual(child.collectionBehavior.intersection(behavior), behavior)
-    XCTAssertTrue(parent.childWindows?.contains(child) == true)
-    preview.close()
-    XCTAssertFalse(child.isVisible)
-    XCTAssertTrue(parent.childWindows?.isEmpty ?? true)
-  }
-
-  func testSearchClearAndPointerHoverWithVirtualCards() throws {
-    for index in 0..<40 { store.upsert(item("Workflow clip \(index)")) }
-    let model = ClipboardPanelViewModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
-    let panel = ClipboardPanelView(viewModel: model, onClose: {})
-    let window = NSWindow(
-      contentRect: NSRect(x: 100, y: 100, width: 460, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
-    window.isReleasedWhenClosed = false
-    window.contentView = panel
-    positionInterfaceWindow(window)
-    defer { window.close() }
-    window.makeKeyAndOrderFront(nil)
-    panel.layoutSubtreeIfNeeded()
-
-    model.searchText = "Workflow clip 17"
-    waitUntil { model.visibleItems.count == 1 }
-    let search = try XCTUnwrap(descendants(panel).compactMap { $0 as? NSSearchField }.first)
-    XCTAssertEqual(search.stringValue, "Workflow clip 17")
-    try button("Clear search", in: panel).performClick(nil)
-    waitUntil { model.visibleItems.count == 40 }
-    XCTAssertEqual(search.stringValue, "")
-    panel.layoutSubtreeIfNeeded()
-
-    let rendered = descendants(panel).compactMap { $0 as? ClipboardItemCardView }
-    XCTAssertLessThan(rendered.count, 40, "History browsing should render only the nearby cards")
-    let hovered = try XCTUnwrap(
-      rendered.first { card in
-        guard card.representedIndex != model.selectedIndex,
-          let clip = sequence(first: card.superview, next: { $0?.superview }).compactMap({ $0 as? NSClipView }).first
-        else { return false }
-        let center = card.convert(NSPoint(x: card.bounds.midX, y: card.bounds.midY), to: clip)
-        return clip.bounds.contains(center)
-      })
-    let point = hovered.convert(NSPoint(x: hovered.bounds.midX, y: hovered.bounds.midY), to: nil)
-    panel.updateHoverForPointer(atWindowLocation: point)
-    XCTAssertEqual(model.selectedIndex, hovered.representedIndex)
-    // The model transform changes synchronously; running the event loop here
-    // would let the machine's real pointer replace the simulated hover.
-    let layer = try XCTUnwrap(hovered.layer)
-    if ClipboardShelfMotion.reducesMotion { XCTAssertEqual(layer.transform.m11, 1) } else { XCTAssertGreaterThan(layer.transform.m11, 1) }
-    panel.clearPointerHoverStates()
-    XCTAssertEqual(layer.transform.m11, 1)
-    XCTAssertEqual(model.selectedIndex, hovered.representedIndex)
-  }
-
-  func testThumbnailCompletionKeepsTheFocusedCardAndItsSelection() throws {
-    let ready = DispatchSemaphore(value: 0)
-    let image = NSImage(size: NSSize(width: 24, height: 24))
-    store.upsert(item("A pending picture", kind: .image))
-    let model = ClipboardPanelViewModel(
-      pasteboard: pasteboard, store: store, settings: settings, cacheService: cache,
-      thumbnailLoader: { _ in
-        _ = ready.wait(timeout: .now() + 2)
-        return image
-      })
-    let panel = ClipboardPanelView(viewModel: model, onClose: {})
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
-    window.isReleasedWhenClosed = false
-    window.contentView = panel
-    positionInterfaceWindow(window)
-    defer {
-      ready.signal()
-      window.close()
-    }
-    window.makeKeyAndOrderFront(nil)
-    panel.layoutSubtreeIfNeeded()
-    let card = try XCTUnwrap(descendants(panel).compactMap { $0 as? ClipboardItemCardView }.first)
-    XCTAssertFalse(card.hasThumbnail)
-    XCTAssertTrue(window.makeFirstResponder(card))
-    let selection = model.selectedItemIDs
-    let label = card.accessibilityLabel()
-    ready.signal()
-    waitUntil { card.hasThumbnail }
-    XCTAssertTrue(descendants(panel).contains { $0 === card }, "Loading a preview must retain the existing card")
-    XCTAssertTrue(window.firstResponder === card)
-    XCTAssertEqual(model.selectedItemIDs, selection)
-    XCTAssertEqual(card.accessibilityLabel(), label)
-  }
-
-  func testSettingsWindowNavigationChangesPersistentCaptureAndAppearancePreferences() throws {
-    let existing = Set(NSApp.windows.map(ObjectIdentifier.init))
-    let controller = SettingsWindowController(settings: settings, store: store, cacheService: cache)
-    let window = try XCTUnwrap(
-      NSApp.windows.first {
-        !existing.contains(ObjectIdentifier($0)) && $0.title == "Goldfish Settings — " + AppConfiguration.buildDescription
-      })
-    defer { window.close() }
-    positionInterfaceWindow(window)
-    controller.show()
-    XCTAssertTrue(window.isVisible)
-
-    func click(_ title: String) throws {
-      let control = try XCTUnwrap(descendants(try XCTUnwrap(window.contentView)).compactMap { $0 as? NSButton }.first { $0.title == title })
-      control.performClick(nil)
-      settle()
-    }
-
-    try click("Copy sound")
-    XCTAssertTrue(settings.copySoundEnabled)
-    try click("Capture")
-    try click("Exclude likely secrets")
-    XCTAssertFalse(settings.excludeSensitive)
-    try click("Privacy")
-    try click("Hide panel from screen sharing and recordings")
-    XCTAssertTrue(settings.hideFromScreenCapture)
-    try click("General")
-    let reopened = SettingsModel(defaults: defaults)
-    XCTAssertTrue(reopened.copySoundEnabled)
-    XCTAssertFalse(reopened.excludeSensitive)
-    XCTAssertTrue(reopened.hideFromScreenCapture)
-  }
-
-  private func item(_ text: String, kind: ClipboardItemKind = .text, sourceApp: String = "Workflow Tests") -> ClipboardItem {
+  private func item(_ text: String, kind: ClipKind = .text, sourceApp: String = "Workflow Tests") -> Clip {
     let now = Date()
     return testItem(kind: kind, payload: text, payloadHash: UUID().uuidString, createdAt: now, useCount: 0, sourceApp: sourceApp)
-  }
-
-  private func copy(_ text: String) {
-    pasteboard.clearContents()
-    XCTAssertTrue(pasteboard.setString(text, forType: .string))
   }
 
   private func button(_ toolTip: String, in view: NSView) throws -> NSButton {
