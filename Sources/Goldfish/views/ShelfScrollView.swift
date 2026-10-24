@@ -27,7 +27,6 @@ final class ShelfScrollView: NSScrollView {
   private let fadeWidth: CGFloat
   var onVisibleBoundsChanged: (() -> Void)?
   var onScrollActivity: (() -> Void)?
-  var onTiled: (() -> Void)?
 
   override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric) }
 
@@ -66,11 +65,6 @@ final class ShelfScrollView: NSScrollView {
     super.layout()
     updateOverflowFades()
     onVisibleBoundsChanged?()
-  }
-
-  override func tile() {
-    super.tile()
-    onTiled?()
   }
 
   override func reflectScrolledClipView(_ clipView: NSClipView) {

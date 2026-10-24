@@ -1,15 +1,12 @@
 import AppKit
 import XCTest
-
 @testable import Goldfish
-
 final class GoldfishWorkflowTests: StoredClipboardTestCase {
   override var encryptionByte: UInt8? { 71 }
   override func setUpWithError() throws {
     _ = NSApplication.shared
     try super.setUpWithError()
   }
-
   func testShelfShortcutsRespectSearchFocusAndModifiers() {
     let cases: [(UInt16, NSEvent.ModifierFlags, String?, ShelfKeyAction?)] = [
       (8, .command, "quartz", nil), (8, .command, nil, .command(.copy)), (49, [], "", .command(.preview)), (49, [], "quartz", nil),
@@ -21,7 +18,6 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
         ShelfKeyAction.key(code, modifiers: flags, settingsShortcut: AppConfig.defaultSettingsShortcut, searchText: text), action)
     }
   }
-
   func testCopyCaptureSearchTransferAndEncryptedRelaunch() throws {
     let monitor = ClipboardMonitor(
       pasteboard: pasteboard, store: store, cacheService: cache, settings: settings, frontmostApp: { (nil, nil) })
@@ -32,7 +28,6 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     monitor.pollNowAndWait()
     waitUntil { self.store.items.count == 1 }
     XCTAssertEqual(store.items.first?.payload, text)
-
     let panel = ShelfModel(pasteboard: pasteboard, store: store, settings: settings, cacheService: cache)
     panel.searchText = "quartz"
     waitUntil { panel.visibleItems.count == 1 }
@@ -48,7 +43,6 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     let restored = HistoryStore(settings: settings, cacheService: cache, baseURL: directory, encryptionService: encryption)
     XCTAssertEqual(restored.items.map(\.payload), [text])
   }
-
   func testImageCommandsPublishCompletedChangesAndCleanFailedRotation() throws {
     let paths = try XCTUnwrap(cache.cacheImage(testImage(color: .blue, size: NSSize(width: 28, height: 16)), id: UUID()))
     let originalSize = try XCTUnwrap(cache.image(for: paths.full)).size
@@ -77,7 +71,6 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     XCTAssertEqual(cache.image(for: rotated.payload)?.size, NSSize(width: originalSize.height, height: originalSize.width))
     XCTAssertEqual(reopen().items, [rotated])
     cache.flushForTesting()
-
     // A file at the thumbnail directory blocks only the second sidecar write.
     let thumbnails = directory.appendingPathComponent("thumbnails")
     let savedThumbnails = directory.appendingPathComponent("saved-thumbnails")
@@ -96,9 +89,8 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: images.path).sorted(), before)
     XCTAssertNotNil(cache.data(for: rotated.payload))
   }
-
-  func testShelfCardsComposerMenusAndClosingAcrossLayouts() throws {
-    store.upsert(item("A saved shelf clip"))
+  func testShelfCardsScrollbarComposerMenusAndClosingAcrossLayouts() throws {
+    for index in 0..<40 { store.upsert(item("Scrollbar clip \(index)")) }
     for layout in [ShelfLayout.sidebar, .cards] {
       settings.shelfLayout = layout
       let existing = Set(NSApp.windows.map(ObjectIdentifier.init))
@@ -115,7 +107,19 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
       XCTAssertTrue(window.isVisible)
       window.sharingType = .none
       XCTAssertTrue(descendants(panel).contains { $0 is CardView })
-
+      if layout == .sidebar {
+        let scroll = try XCTUnwrap(descendants(panel).compactMap { $0 as? ShelfScrollView }.first { $0.documentView is ClipboardCardsDocumentView })
+        for style in [NSScroller.Style.overlay, .legacy] {
+          scroll.scrollerStyle = style
+          panel.layoutSubtreeIfNeeded()
+          scroll.flashScrollers()
+          settle()
+          let scroller = try XCTUnwrap(scroll.verticalScroller)
+          let knob = scroller.rect(for: .knob)
+          let point = scroller.convert(NSPoint(x: knob.midX, y: knob.midY), to: panel)
+          XCTAssertTrue(panel.hitTest(point) === scroller, "Visible thumb must receive mouse events with \(style)")
+        }
+      }
       try button("New Text Clip", in: panel).performClick(nil)
       XCTAssertTrue(panel.presentedTextEditorWindow?.isVisible == true)
       XCTAssertEqual(panel.presentedTextEditorWindow?.sharingType, NSWindow.SharingType.none)
@@ -144,7 +148,6 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     let now = Date()
     return testItem(kind: kind, payload: text, payloadHash: UUID().uuidString, createdAt: now, useCount: 0, sourceApp: sourceApp)
   }
-
   private func button(_ toolTip: String, in view: NSView) throws -> NSButton {
     try XCTUnwrap(descendants(view).compactMap { $0 as? NSButton }.first { $0.toolTip == toolTip })
   }

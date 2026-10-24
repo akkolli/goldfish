@@ -213,7 +213,6 @@ final class ShelfView: NSView {
     scrollView.setContentCompressionResistancePriority(.required, for: .vertical)
     scrollView.onVisibleBoundsChanged = { [weak self] in
       guard let self else { return }
-      self.alignVerticalScrollerThumb()
       if self.scrollView.contentView.bounds.size != self.lastScrollViewportSize {
         // AppKit can install a legacy scrollbar after the parent's layout pass.
         // Re-measure against the final clip width, or right card corners get cut.
@@ -228,7 +227,6 @@ final class ShelfView: NSView {
       self?.clearCardHoverStates()
       self?.shelfControls.dismissMenu(restoreFocus: true)
     }
-    scrollView.onTiled = { [weak self] in self?.alignVerticalScrollerThumb() }
 
     let headerStack = NativeUI.stack(
       [shelfChrome, shelfControls.navigationView], axis: .vertical, alignment: .leading, spacing: 8, distribution: .fill, detachHidden: true
@@ -366,27 +364,6 @@ final class ShelfView: NSView {
     return max(Metrics.cardInset, floor((readingWidth - cardWidth) / 2))
   }
 
-  private func alignVerticalScrollerThumb() {
-    guard !viewModel.usesCardShelf, let scroller = scrollView.verticalScroller as? ShelfScroller else { return }
-    // AppKit gives overlay scrollers a wide, asymmetrically inset frame. Keep
-    // the hit area inside the card-to-wall gutter before centering its thumb.
-    let gutterWidth: CGFloat = 12
-    if abs(scroller.frame.width - gutterWidth) > 0.25 { scroller.setFrameSize(NSSize(width: gutterWidth, height: scroller.frame.height)) }
-    let viewportWidth = scrollView.contentView.bounds.width
-    guard viewportWidth > 1 else { return }
-    let cardWidth = currentCardLayout(viewportWidth: viewportWidth).width
-    let cardRight = verticalCardMinXInContent(width: cardWidth, viewportWidth: viewportWidth) + cardWidth
-    let cardRightInPanel = scrollView.contentView.convert(NSPoint(x: cardRight, y: 0), to: self).x
-    let centeredThumbInPanel = (cardRightInPanel + bounds.maxX) / 2
-    let currentThumbInPanel = scroller.convert(NSPoint(x: scroller.rect(for: .knob).midX, y: 0), to: self).x
-    let correction = centeredThumbInPanel - currentThumbInPanel
-    if abs(correction) > 0.25 {
-      // Move the native scroller and its hit area together. Offsetting only
-      // the paint makes the visible thumb disagree with drag hit testing.
-      scroller.setFrameOrigin(NSPoint(x: scroller.frame.minX + correction, y: scroller.frame.minY))
-    }
-  }
-
   private func applyPanelLayout(reloadItems shouldReload: Bool = true) {
     appliedShelfLayout = viewModel.shelfLayout
     contentTypeScrollView.documentView = nil
@@ -417,7 +394,8 @@ final class ShelfView: NSView {
     scrollView.hasHorizontalScroller = viewModel.usesCardShelf
     scrollView.hasVerticalScroller = !viewModel.usesCardShelf
     scrollView.autohidesScrollers = true
-    scrollViewTrailingConstraint?.constant = viewModel.usesCardShelf ? 0 : Metrics.verticalScrollerLane
+    // Keep the scroll view inside its parent so the native thumb remains hittable.
+    scrollViewTrailingConstraint?.constant = 0
     scrollView.setContentHuggingPriority(.defaultLow, for: .vertical)
     scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
 
@@ -936,7 +914,6 @@ final class ShelfView: NSView {
     shelfSurface.setNotch(
       frame: viewModel.usesCardShelf ? .zero : convert(contentTypeNotch.bounds, from: contentTypeNotch),
       bodyLeadingInset: viewModel.usesCardShelf ? 0 : ShelfControls.contentTypeRailAllowance)
-    alignVerticalScrollerThumb()
     if cardsDocument.contentInsets.right != verticalCardTrailingInset {
       var insets = cardsDocument.contentInsets
       insets.right = verticalCardTrailingInset
