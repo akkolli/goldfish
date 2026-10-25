@@ -19,10 +19,17 @@ final class GoldfishMigrationTests: IsolatedTestCase {
     let sidecarData = try Data(contentsOf: URL(fileURLWithPath: oldSidecar))
     try (Data(GoldfishMigration.legacyEncryptionMarker.utf8) + sidecarData.dropFirst(HistoryEncryption.marker.utf8.count)).write(
       to: URL(fileURLWithPath: oldSidecar))
+    let orphan = source.appendingPathComponent("images/retired-key-cache.bin")
+    let orphanBody = try testEncryption(byte: 99).protectDataForStorage(Data("unused older cache".utf8)).dropFirst(
+      HistoryEncryption.marker.utf8.count)
+    try (Data(GoldfishMigration.legacyEncryptionMarker.utf8) + orphanBody).write(to: orphan)
     let originalDatabase = try Data(contentsOf: database)
     let originalSidecar = try Data(contentsOf: URL(fileURLWithPath: oldSidecar))
     try GoldfishMigration.migrateDirectory(from: source, to: target, encryptionProvider: { _ in self.encryption })
     XCTAssertEqual(try Data(contentsOf: database), originalDatabase)
+    let migratedOrphan = try Data(contentsOf: target.appendingPathComponent("images/retired-key-cache.bin"))
+    XCTAssertTrue(migratedOrphan.starts(with: Data(HistoryEncryption.marker.utf8)))
+    XCTAssertEqual(Data(migratedOrphan.dropFirst(HistoryEncryption.marker.utf8.count)), Data(orphanBody))
     XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: oldSidecar)), originalSidecar)
     let settings = SettingsModel(defaults: defaults)
     let cache = MediaCache(baseURL: target, encryptionService: encryption)
@@ -109,6 +116,15 @@ final class GoldfishMigrationTests: IsolatedTestCase {
     _ = try backup.syncArchiveURL()
     XCTAssertEqual(try Data(contentsOf: new), Data("newer backup".utf8))
     XCTAssertEqual(HistoryArchive.fileExtension, "goldfisharchive")
+  }
+
+  func testMigrationKeepsOnlyAnExistingDurableFallbackWhenKeychainIsUnavailable() {
+    let original = Data(repeating: 71, count: 32)
+    let different = Data(repeating: 99, count: 32)
+    XCTAssertEqual(HistoryEncryption.migrationKeyData(legacyData: original, savedData: original, hasExistingFallback: false), original)
+    XCTAssertEqual(HistoryEncryption.migrationKeyData(legacyData: original, savedData: nil, hasExistingFallback: true), original)
+    XCTAssertNil(HistoryEncryption.migrationKeyData(legacyData: original, savedData: nil, hasExistingFallback: false))
+    XCTAssertNil(HistoryEncryption.migrationKeyData(legacyData: original, savedData: different, hasExistingFallback: true))
   }
 
   private func seed(_ directory: URL, defaults: UserDefaults) throws -> Clip {

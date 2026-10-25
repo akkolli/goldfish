@@ -36,6 +36,14 @@ final class HistoryEncryption {
     self.allowsUnencryptedStorage = allowsUnencryptedStorage
   }
 
+  static func migrationKeyData(legacyData: Data, savedData: Data?, hasExistingFallback: Bool) -> Data? {
+    // A copied, existing fallback remains durable if Keychain access times out.
+    // Never create a competing fallback, accept a different saved key, or adopt
+    // an unavailable Keychain-only key without confirmed persistence.
+    if let savedData { return savedData == legacyData ? legacyData : nil }
+    return hasExistingFallback ? legacyData : nil
+  }
+
   static func migrationEncryption(at directory: URL) throws -> HistoryEncryption {
     guard let key = ClipboardEncryptionKeychain.shared.adoptLegacyKey(from: directory) else { throw StorageError.keyUnavailable }
     return HistoryEncryption(keyProvider: { key }, allowsUnencryptedStorage: false)
@@ -126,10 +134,12 @@ private final class KeychainBackedKeyProvider {
     queue.sync {
       let legacy = KeychainBackedKeyProvider(
         service: GoldfishMigration.legacyBundleIdentifier + ".encryption", fallbackDirectory: directory)
-      guard let data = legacy.readFallbackKeyData() ?? legacy.readKeyData(), let saved = saveKeyData(data), saved == data else {
-        return nil
-      }
-      cachedKey = SymmetricKey(data: data)
+      let fallback = legacy.readFallbackKeyData()
+      guard let data = fallback ?? legacy.readKeyData(),
+        let adopted = HistoryEncryption.migrationKeyData(
+          legacyData: data, savedData: saveKeyData(data), hasExistingFallback: fallback != nil)
+      else { return nil }
+      cachedKey = SymmetricKey(data: adopted)
       return cachedKey
     }
   }
