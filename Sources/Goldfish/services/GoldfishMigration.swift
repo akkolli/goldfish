@@ -146,7 +146,7 @@ enum GoldfishMigration {
     }
     defer { sqlite3_close(db) }
     func execute(_ sql: String) throws { guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else { throw Failure.unreadableHistory } }
-    try execute("PRAGMA journal_mode=DELETE; BEGIN IMMEDIATE;")
+    try execute("PRAGMA secure_delete=ON; PRAGMA journal_mode=DELETE; BEGIN IMMEDIATE;")
     var committed = false
     defer { if !committed { try? execute("ROLLBACK;") } }
     var schema: OpaquePointer?
@@ -197,6 +197,8 @@ enum GoldfishMigration {
     write = nil
     try execute("COMMIT;")
     committed = true
+    // Do not carry old plaintext in free pages into the published profile.
+    try execute("VACUUM;")
     var check: OpaquePointer?
     defer { sqlite3_finalize(check) }
     guard sqlite3_prepare_v2(db, "PRAGMA quick_check;", -1, &check, nil) == SQLITE_OK, sqlite3_step(check) == SQLITE_ROW,
