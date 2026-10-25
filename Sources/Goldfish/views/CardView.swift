@@ -36,6 +36,7 @@ final class CardView: NSView, NSDraggingSource {
   private var isKeyboardFocused = false
   private var isFocusingFromPointer = false
   private var mouseDownLocation: NSPoint?
+  private var copyOnMouseUp = false
 
   var representedItemID: UUID { item.id }
 
@@ -206,6 +207,7 @@ final class CardView: NSView, NSDraggingSource {
   override func accessibilityPerformPress() -> Bool {
     onSelect(index, .replace)
     window?.makeFirstResponder(self)
+    onCommand(.copy)
     return true
   }
 
@@ -220,15 +222,17 @@ final class CardView: NSView, NSDraggingSource {
   }
 
   override func mouseDown(with event: NSEvent) {
-    if event.clickCount == 2 {
-      mouseDownLocation = nil
-      onCommand(.paste)
-    } else {
-      mouseDownLocation = convert(event.locationInWindow, from: nil)
-      focusFromPointer()
-      onSelect(index, selectionMode(from: event.modifierFlags))
-      setHoverState(true, notifySelection: true, mouseLocation: event.locationInWindow)
-    }
+    mouseDownLocation = convert(event.locationInWindow, from: nil)
+    copyOnMouseUp = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock).isEmpty
+    focusFromPointer()
+    onSelect(index, selectionMode(from: event.modifierFlags))
+    setHoverState(true, notifySelection: true, mouseLocation: event.locationInWindow)
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    defer { mouseDownLocation = nil }
+    guard mouseDownLocation != nil, copyOnMouseUp, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+    onCommand(.copy)
   }
 
   override func mouseDragged(with event: NSEvent) {

@@ -41,7 +41,7 @@ Use this checklist before a release or after changes to the shelf, pasteboard, s
 8. Command-click non-adjacent cards and Shift-click a range. Confirm context-menu batch actions use the selected set and `Command + A` selects all visible cards.
 9. Delete multiple selected clips, press `Command + Z`, and confirm the batch returns selected.
 10. From a filtered result, choose Show in Clipboard or press `Command + G`; confirm search clears and the same clip stays selected in Clipboard.
-11. Double-click a card and confirm paste or copy fallback occurs without creating a duplicate history item.
+11. Click a card, then select another with the keyboard and press Return; confirm each copies without inserting into another app or creating duplicate history. Modified clicks and drags must not copy.
 12. Confirm cards show actual copied text, optional custom titles, images, document previews, and readable link/media fallbacks. Missing source apps must not display `Unknown`.
 13. On multiple displays and Spaces, confirm the shortcut opens on the pointer's active display/Space and the menu-bar icon opens on its display. Verify both left and right placement in Settings > General. Check the optional Horizontal shelf, then return to Vertical shelf.
 14. Type `p` and confirm it searches instead of pinning. Command-P toggles pinning. Command-N or the pencil button creates a note without overwriting the system clipboard; inside a Pinboard the new note belongs to that board.

@@ -1,22 +1,18 @@
 import AppKit
 import CryptoKit
 import XCTest
-
 @testable import Goldfish
-
 /// One owner for temporary storage and preference suites used by each scenario.
 class IsolatedTestCase: XCTestCase {
   var tempURLs: [URL] = []
   var suiteNames: [String] = []
   private var storageFixtures: [ClipboardTestStorage] = []
-
   func makeTempDirectory() throws -> URL {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("GoldfishTests-\(UUID())", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     tempURLs.append(url)
     return url
   }
-
   func makeTestDefaults(retention: HistoryRetention? = nil) -> UserDefaults {
     let suite = "GoldfishTests.\(UUID())"
     suiteNames.append(suite)
@@ -24,7 +20,6 @@ class IsolatedTestCase: XCTestCase {
     if let retention { defaults.set(retention.rawValue, forKey: SettingsModel.Keys.historyRetention.rawValue) }
     return defaults
   }
-
   func makeStorage(at directory: URL? = nil, retention: HistoryRetention? = nil, limit: Int? = nil, encryptionByte: UInt8? = nil) throws
     -> ClipboardTestStorage
   {
@@ -35,7 +30,6 @@ class IsolatedTestCase: XCTestCase {
     storageFixtures.append(fixture)
     return fixture
   }
-
   override func tearDownWithError() throws {
     storageFixtures.forEach { $0.flush() }
     storageFixtures.removeAll()
@@ -46,17 +40,14 @@ class IsolatedTestCase: XCTestCase {
     try super.tearDownWithError()
   }
 }
-
 /// Transfers and capture use a named board, never the user's clipboard.
 class ClipboardTestCase: IsolatedTestCase {
   let pasteboard = NSPasteboard.withUniqueName()
-
   override func tearDownWithError() throws {
     pasteboard.releaseGlobally()
     try super.tearDownWithError()
   }
 }
-
 /// Shared storage ownership for capture, persistence and interface scenarios.
 /// The history opens lazily, so key-failure tests can supply their own stores.
 class StoredClipboardTestCase: ClipboardTestCase {
@@ -68,7 +59,6 @@ class StoredClipboardTestCase: ClipboardTestCase {
   var encryption: HistoryEncryption { storage.encryption }
   var cache: MediaCache { storage.cache }
   var store: HistoryStore { storage.store }
-
   override func setUpWithError() throws {
     try super.setUpWithError()
     if let name = ProcessInfo.processInfo.environment["GOLDFISH_TEST_SCREEN"], interfaceScreen == nil {
@@ -76,20 +66,16 @@ class StoredClipboardTestCase: ClipboardTestCase {
     }
     try resetStorage()
   }
-
   func resetStorage() throws {
     storage?.flush()
     storage = try makeStorage(retention: .forever, encryptionByte: encryptionByte)
   }
-
   func reopen() -> HistoryStore { storage.reopen() }
-
   override func tearDownWithError() throws {
     storage?.flush()
     storage = nil
     try super.tearDownWithError()
   }
-
   func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
   var interfaceScreen: NSScreen? {
     guard let name = ProcessInfo.processInfo.environment["GOLDFISH_TEST_SCREEN"] else { return nil }

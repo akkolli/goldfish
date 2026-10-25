@@ -266,7 +266,7 @@ struct ClipPresentation {
   }
 
   func accessibilityHelpText() -> String {
-    "Press Return to paste, or copy when automatic paste is unavailable. Space opens Quick Look. Command-R renames; Command-E edits text. Delete removes selected clips; Command-Z restores them."
+    "Click or press Return to copy to clipboard. Space opens Quick Look. Command-R renames; Command-E edits text. Delete removes selected clips; Command-Z restores them."
   }
 
   func kindLabel(for kind: ClipKind) -> String { kind.presentation.label }

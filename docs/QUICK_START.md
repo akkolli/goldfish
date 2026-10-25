@@ -12,8 +12,8 @@ enabling launch at login or granting Accessibility permission.
 2. Copy a few things in your usual apps.
 3. Click the menu-bar icon or press your chosen shortcut. First-run setup offers
    Shift-Command-V; the alternate shortcut is Command-Option-V.
-4. Type to search, use Up/Down to select, then Return to paste. Without Accessibility
-   permission, Goldfish copies the clip instead; switch back to your app and press Command-V.
+4. Click a clip, or use Up/Down to select and press Return, to copy it to the clipboard.
+   Switch back to your app and press Command-V to paste.
    Down Arrow from search enters the selected result. Escape clears a search first, then closes the shelf.
 
 ## Useful shortcuts

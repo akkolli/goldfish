@@ -11,7 +11,7 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     let cases: [(UInt16, NSEvent.ModifierFlags, String?, ShelfKeyAction?)] = [
       (8, .command, "quartz", nil), (8, .command, nil, .command(.copy)), (49, [], "", .command(.preview)), (49, [], "quartz", nil),
       (18, [.command, .shift], nil, .paste(index: 0, plain: true)), (18, [.command, .option], nil, .destination(.mostRecent)),
-      (36, .shift, "quartz", .command(.pastePlainText)), (53, [], nil, .cancel),
+      (36, .shift, "quartz", .command(.pastePlainText)), (36, [], nil, .command(.copy)), (76, [], nil, .command(.copy)), (53, [], nil, .cancel),
     ]
     for (code, flags, text, action) in cases {
       XCTAssertEqual(
@@ -32,7 +32,7 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
     panel.searchText = "quartz"
     waitUntil { panel.visibleItems.count == 1 }
     XCTAssertEqual(panel.selectedItem?.payload, text)
-    panel.copySelected()
+    XCTAssertTrue(panel.performCommand(try XCTUnwrap(ClipCommand.cardKey(36, modifiers: [], canEdit: true, canOpen: false))))
     XCTAssertEqual(pasteboard.string(forType: .string), text)
     XCTAssertEqual(panel.statusMessage, "Copied")
     monitor.pollNowAndWait()
@@ -106,7 +106,21 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
       let panel = try XCTUnwrap(window.contentView as? ShelfView)
       XCTAssertTrue(window.isVisible)
       window.sharingType = .none
-      XCTAssertTrue(descendants(panel).contains { $0 is CardView })
+      let card = try XCTUnwrap(descendants(panel).compactMap { $0 as? CardView }.first)
+      let expected = try XCTUnwrap(store.items.first { $0.id == card.representedItemID }).payload
+      let point = card.convert(NSPoint(x: card.bounds.midX, y: card.bounds.midY), to: nil)
+      func mouse(_ type: NSEvent.EventType, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
+        try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: flags, timestamp: 0,
+          windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+      }
+      for flags: NSEvent.ModifierFlags in [.command, .shift, []] {
+        pasteboard.clearContents()
+        pasteboard.setString("Before clicking", forType: .string)
+        card.mouseDown(with: try mouse(.leftMouseDown, flags))
+        XCTAssertEqual(pasteboard.string(forType: .string), "Before clicking")
+        card.mouseUp(with: try mouse(.leftMouseUp, flags))
+        XCTAssertEqual(pasteboard.string(forType: .string), flags.isEmpty ? expected : "Before clicking")
+      }
       if layout == .sidebar {
         let scroll = try XCTUnwrap(descendants(panel).compactMap { $0 as? ShelfScrollView }.first { $0.documentView is ClipboardCardsDocumentView })
         for style in [NSScroller.Style.overlay, .legacy] {

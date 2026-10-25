@@ -32,7 +32,7 @@ enum ClipCommand: Equatable {
     // The native card's unmodified command handling also accepts other modifier
     // combinations; those must not take the exact Command/Shift branches above.
     switch code {
-    case 36, 76: return .paste
+    case 36, 76: return .copy
     case 49: return .preview
     case 51, 117: return .delete
     default: return nil
@@ -118,7 +118,7 @@ enum ShelfKeyAction: Equatable {
     switch code {
     case 53: return .cancel
     case 49: return .command(.preview)
-    case 36: return .command(.paste)
+    case 36, 76: return .command(.copy)
     case 51, 117: return .command(.delete)
     default: return nil
     }

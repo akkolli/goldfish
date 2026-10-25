@@ -161,7 +161,7 @@ final class ShelfView: NSView {
     ])
 
     searchControl.onTextChanged = { [weak self] in self?.viewModel.searchText = $0 }
-    searchControl.onSubmit = { [weak self] in self?.viewModel.pasteSelected() }
+    searchControl.onSubmit = { [weak self] in self?.viewModel.copySelected() }
     searchControl.onCancel = { [weak self] in self?.onClose() }
     searchControl.onNavigateResults = { [weak self] in self?.focusSelectedCardForKeyboardNavigation() }
 
