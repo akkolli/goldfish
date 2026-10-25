@@ -118,6 +118,15 @@ final class GoldfishMigrationTests: IsolatedTestCase {
     XCTAssertEqual(HistoryArchive.fileExtension, "goldfisharchive")
   }
 
+  func testMigrationKeepsOnlyAnExistingDurableFallbackWhenKeychainIsUnavailable() {
+    let original = Data(repeating: 71, count: 32)
+    let different = Data(repeating: 99, count: 32)
+    XCTAssertEqual(HistoryEncryption.migrationKeyData(legacyData: original, savedData: original, hasExistingFallback: false), original)
+    XCTAssertEqual(HistoryEncryption.migrationKeyData(legacyData: original, savedData: nil, hasExistingFallback: true), original)
+    XCTAssertNil(HistoryEncryption.migrationKeyData(legacyData: original, savedData: nil, hasExistingFallback: false))
+    XCTAssertNil(HistoryEncryption.migrationKeyData(legacyData: original, savedData: different, hasExistingFallback: true))
+  }
+
   private func seed(_ directory: URL, defaults: UserDefaults) throws -> Clip {
     try FileManager.default.createDirectory(at: directory.appendingPathComponent("images"), withIntermediateDirectories: true)
     let path = directory.appendingPathComponent("images/example.png")
