@@ -129,11 +129,11 @@ final class PasteActionServiceTests: StoredClipboardTestCase {
 
   func testUnwritableSingleAndBatchCopiesPreserveTheClipboard() {
     let missing = testItem(
-      kind: .file, displayText: "Missing file", payload: "/tmp/clipbored-missing-\(UUID())", payloadHash: "hash", createdAt: Date(),
+      kind: .file, displayText: "Missing file", payload: "/tmp/goldfish-missing-\(UUID())", payloadHash: "hash", createdAt: Date(),
       lastUsedAt: Date(), useCount: 0)
     let batchMissing = testItem(
       kind: .file, displayText: "Missing file",
-      payload: FileManager.default.temporaryDirectory.appendingPathComponent("clipbored-missing-\(UUID())").path, payloadHash: "hash",
+      payload: FileManager.default.temporaryDirectory.appendingPathComponent("goldfish-missing-\(UUID())").path, payloadHash: "hash",
       createdAt: Date(), lastUsedAt: Date(), useCount: 0)
     let cases: [(items: [Clip], batch: Bool, error: String)] = [
       ([makeTextItem("Writable"), batchMissing], true, "Could not write items to clipboard."),

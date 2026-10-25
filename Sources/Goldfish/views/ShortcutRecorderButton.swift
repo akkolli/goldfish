@@ -1,6 +1,6 @@
 import AppKit
 
-extension Notification.Name { static let clipBoredShortcutRecordingChanged = Notification.Name("Goldfish.ShortcutRecordingChanged") }
+extension Notification.Name { static let goldfishShortcutRecordingChanged = Notification.Name("Goldfish.ShortcutRecordingChanged") }
 
 /// Record actual key events, including modifiers, without invoking app menus.
 final class ShortcutRecorderButton: NSButton {
@@ -39,7 +39,7 @@ final class ShortcutRecorderButton: NSButton {
     isRecording = recording
     title = recording ? "Press shortcut…  Esc to cancel" : binding.displayText + "  · Change"
     setAccessibilityValue(recording ? "Recording shortcut" : binding.displayText)
-    NotificationCenter.default.post(name: .clipBoredShortcutRecordingChanged, object: self, userInfo: ["recording": recording])
+    NotificationCenter.default.post(name: .goldfishShortcutRecordingChanged, object: self, userInfo: ["recording": recording])
   }
 
   override func resignFirstResponder() -> Bool {

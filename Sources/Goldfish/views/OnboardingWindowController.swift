@@ -1,7 +1,7 @@
 import AppKit
 
 final class OnboardingWindowController: NSObject, NSWindowDelegate {
-  enum ShortcutChoice: String { case pasteStyle, clipBoredDefault, current }
+  enum ShortcutChoice: String { case pasteStyle, goldfishDefault, current }
   struct PresentationChoice: Equatable {
     let showMenuBarIcon: Bool
     let showDockIcon: Bool
@@ -15,13 +15,13 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
   }
   static func initialShortcutChoice(for binding: ShortcutBinding, onboardingCompleted: Bool) -> ShortcutChoice {
     if binding == pasteStyleOpenShortcut { return .pasteStyle }
-    if binding == AppConfig.defaultOpenShortcut { return onboardingCompleted ? .clipBoredDefault : .pasteStyle }
+    if binding == AppConfig.defaultOpenShortcut { return onboardingCompleted ? .goldfishDefault : .pasteStyle }
     return .current
   }
   static func shortcutBinding(for choice: ShortcutChoice, current: ShortcutBinding) -> ShortcutBinding {
     switch choice {
     case .pasteStyle: return pasteStyleOpenShortcut
-    case .clipBoredDefault: return AppConfig.defaultOpenShortcut
+    case .goldfishDefault: return AppConfig.defaultOpenShortcut
     case .current: return current
     }
   }
@@ -182,7 +182,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
   }
   @objc private func chooseShortcut() {
     let menu = NSMenu()
-    var choices: [(String, ShortcutChoice)] = [("⇧⌘V — Shift–Command–V", .pasteStyle), ("⌥⌘V — Option–Command–V", .clipBoredDefault)]
+    var choices: [(String, ShortcutChoice)] = [("⇧⌘V — Shift–Command–V", .pasteStyle), ("⌥⌘V — Option–Command–V", .goldfishDefault)]
     if settings.openShortcut != Self.pasteStyleOpenShortcut, settings.openShortcut != AppConfig.defaultOpenShortcut {
       choices.append(("Keep current: \(settings.openShortcut.displayText)", .current))
     }

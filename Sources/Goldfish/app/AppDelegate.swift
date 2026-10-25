@@ -90,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     applyCapturePauseSetting()
     shortcutManager.start()
     NotificationCenter.default.addObserver(
-      self, selector: #selector(shortcutRecordingChanged(_:)), name: .clipBoredShortcutRecordingChanged, object: nil)
+      self, selector: #selector(shortcutRecordingChanged(_:)), name: .goldfishShortcutRecordingChanged, object: nil)
 
     applyLaunchAtLoginSetting(settings.launchAtLogin)
 

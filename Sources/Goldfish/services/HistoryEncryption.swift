@@ -5,7 +5,7 @@ import Security
 
 // Swift marks SecAccessCreate deprecated, but macOS still needs kSecAttrAccess
 // here to avoid legacy keychain authorization UI during generic-password creation.
-@_silgen_name("SecAccessCreate") private func clipBoredSecAccessCreate(
+@_silgen_name("SecAccessCreate") private func goldfishSecAccessCreate(
   _ descriptor: CFString, _ trustedList: CFArray?, _ accessRef: UnsafeMutablePointer<SecAccess?>
 ) -> OSStatus
 
@@ -189,7 +189,7 @@ private final class KeychainBackedKeyProvider {
 
   private func keychainAccess() -> SecAccess? {
     var access: SecAccess?
-    let status = clipBoredSecAccessCreate("Goldfish encryption key" as CFString, nil, &access)
+    let status = goldfishSecAccessCreate("Goldfish encryption key" as CFString, nil, &access)
     guard status == errSecSuccess else { return nil }
     return access
   }

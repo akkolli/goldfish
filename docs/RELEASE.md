@@ -62,7 +62,7 @@ The scripts write `APP_BUNDLE_IDENTIFIER` into the packaged Info.plist and apply
 Preferred: configure a notarytool keychain profile once:
 
 ```bash
-xcrun notarytool store-credentials "clipbored-notary" \
+xcrun notarytool store-credentials "goldfish-notary" \
   --apple-id "developer@example.com" \
   --team-id "TEAMID" \
   --password "app-specific-password"
@@ -72,7 +72,7 @@ Then run:
 
 ```bash
 export DEVELOPER_ID_APPLICATION="Developer ID Application: Example, Inc. (TEAMID)"
-export NOTARYTOOL_PROFILE="clipbored-notary"
+export NOTARYTOOL_PROFILE="goldfish-notary"
 ./scripts/release-macos-app.sh
 ```
 

@@ -1,8 +1,10 @@
 # Goldfish
 
+[GitHub repository](https://github.com/akkolli/goldfish)
+
 Goldfish is a native macOS clipboard manager with searchable vertical and horizontal shelves. It remembers text, code, colors, links, images, rich text, files, PDFs, audio, and video. Pinboards and pinned clips survive ordinary history expiry. Cards support preview, original-format or plain-text copy/paste, multi-selection, editing, renaming, drag-and-drop, and deletion Undo.
 
-Goldfish was previously named ClipBored. Existing storage, preferences, bundle identifier, Keychain service, and archive identities remain compatible. Capture starts only after explicit first-run setup; automatic paste permission is optional. History and managed attachments are encrypted locally. Portable archives are unencrypted, and optional iCloud whole-history backup requires an entitled build.
+Existing installations keep their saved history, preferences, encryption keys, and archives when updating Goldfish. Capture starts only after explicit first-run setup; automatic paste permission is optional. History and managed attachments are encrypted locally. Portable archives are unencrypted, and optional iCloud whole-history backup requires an entitled build.
 
 See the [user guide](docs/QUICK_START.md) for controls and shortcuts, [interface specification](docs/UI_DESIGN.md) for layout and accessibility behavior, and [security notes](docs/SECURITY.md) for protections and limitations.
 

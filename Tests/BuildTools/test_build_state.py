@@ -63,9 +63,9 @@ class BuildStateTests(unittest.TestCase):
     def test_old_branding_and_package_names_are_rejected(self):
         for key in ('CFBundleName', 'CFBundleDisplayName', 'CFBundleExecutable'):
             info = plistlib.loads(self.info.read_bytes())
-            info[key] = 'ClipBored'
+            info[key] = 'OtherApp'
             with self.assertRaisesRegex(ValueError, key): state.validate_name(info)
-        (self.root / 'Package.swift').write_text('name: "ClipBored"')
+        (self.root / 'Package.swift').write_text('name: "OtherApp"')
         with self.assertRaisesRegex(ValueError, 'Package'): state.snapshot(self.root, allow_dirty=True)
 
     def test_install_requires_provenance_clean_main_and_matching_source(self):

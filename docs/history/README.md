@@ -6,11 +6,11 @@ The September reports described retired shelf layouts, earlier test counts, and 
 
 | Record | Preserved report |
 | --- | --- |
-| Design assessment | [DESIGN_REVIEW_2026-27.md](https://github.com/akkolli/clipbored/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/DESIGN_REVIEW_2026-27.md) |
-| First design implementation | [DESIGN_UPDATE_2026-27.md](https://github.com/akkolli/clipbored/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/DESIGN_UPDATE_2026-27.md) |
-| Goldfish redesign | [GOLDFISH_DESIGN_REBUILD.md](https://github.com/akkolli/clipbored/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/GOLDFISH_DESIGN_REBUILD.md) |
-| Early release review | [RELEASE_REVIEW.md](https://github.com/akkolli/clipbored/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/RELEASE_REVIEW.md) |
-| September code reductions | [CODEBASE_CLEANUP.md](https://github.com/akkolli/clipbored/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/CODEBASE_CLEANUP.md) |
+| Design assessment | [DESIGN_REVIEW_2026-27.md](https://github.com/akkolli/goldfish/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/DESIGN_REVIEW_2026-27.md) |
+| First design implementation | [DESIGN_UPDATE_2026-27.md](https://github.com/akkolli/goldfish/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/DESIGN_UPDATE_2026-27.md) |
+| Goldfish redesign | [GOLDFISH_DESIGN_REBUILD.md](https://github.com/akkolli/goldfish/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/GOLDFISH_DESIGN_REBUILD.md) |
+| Early release review | [RELEASE_REVIEW.md](https://github.com/akkolli/goldfish/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/RELEASE_REVIEW.md) |
+| September code reductions | [CODEBASE_CLEANUP.md](https://github.com/akkolli/goldfish/blob/58c03a240c577e136de5ecceb7a1ce4cd1bd5ee7/docs/history/CODEBASE_CLEANUP.md) |
 
 The enduring decisions are: local-first Mac capture; stable content geometry during hover; independent destination, content, search, and order; explicit onboarding consent; drafts retained after failed saves; owned child previews; native keyboard/VoiceOver controls; and clearly labeled copy fallback and unencrypted archive backup. The current guides describe their shipping implementation.
 
