@@ -37,6 +37,9 @@ final class GoldfishMigrationTests: IsolatedTestCase {
     XCTAssertNil(store.loadWarningMessage)
     let restored = try XCTUnwrap(store.items.first)
     XCTAssertEqual(restored.id, item.id)
+    XCTAssertEqual(restored.sourceApp, "legacy plaintext migration fixture")
+    XCTAssertNil(
+      try Data(contentsOf: target.appendingPathComponent("history.sqlite")).range(of: Data("legacy plaintext migration fixture".utf8)))
     XCTAssertEqual(restored.collectionName, "Examples")
     XCTAssertTrue(restored.isPinned)
     XCTAssertEqual(restored.payload, target.appendingPathComponent("images/example.png").path)
@@ -151,5 +154,10 @@ final class GoldfishMigrationTests: IsolatedTestCase {
     let update = fields.map { "\($0)=replace(\($0),'\(HistoryEncryption.marker)','\(GoldfishMigration.legacyEncryptionMarker)')" }.joined(
       separator: ",")
     XCTAssertEqual(sqlite3_exec(db, "UPDATE clipboard_items SET \(update);", nil, nil, nil), SQLITE_OK)
+    XCTAssertEqual(
+      sqlite3_exec(
+        db,
+        "PRAGMA secure_delete=OFF; UPDATE clipboard_items SET source_app='legacy plaintext migration fixture'; CREATE TABLE old_plaintext(value TEXT); INSERT INTO old_plaintext VALUES ('legacy plaintext migration fixture'); DROP TABLE old_plaintext;",
+        nil, nil, nil), SQLITE_OK)
   }
 }
