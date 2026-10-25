@@ -54,6 +54,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var didPresentHistoryLoadWarning = false
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    do { try GoldfishMigration.prepare() } catch {
+      let message = (error as? GoldfishMigration.Failure)?.errorDescription ?? "Storage could not be accessed."
+      NSLog("Goldfish upgrade stopped: %@", message)
+      let alert = NSAlert()
+      alert.messageText = "Goldfish could not migrate saved data"
+      alert.informativeText =
+        "Your original files are untouched. Quit older copies, unlock the login Keychain, check available disk space, and try again. "
+        + message
+      alert.runModal()
+      NSApp.terminate(nil)
+      return
+    }
     settings = SettingsModel()
     soundService = TransferSounds(settings: settings)
     cacheService = MediaCache()
@@ -123,8 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     pauseResumeTimer?.invalidate()
     cloudSyncPushWorkItem?.cancel()
     dataCoordinator.cancel()
-    monitor.stop()
-    shortcutManager.stop()
+    monitor?.stop()
+    shortcutManager?.stop()
+    guard let settings, let store, let cacheService else { return }
     cacheService.clearTemporaryPreviews(wait: true)
     if settings.clearHistoryOnQuit, store.removeAll() {
       store.flushPersistence()

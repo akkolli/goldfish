@@ -77,8 +77,19 @@ enum GoldfishMigration {
       }
       for url in sidecars {
         let stored = try Data(contentsOf: url)
-        guard let plain = encryption.unprotectData(stored) else { throw Failure.unavailableEncryption }
-        try encryption.protectDataForStorage(plain).write(to: url, options: .atomic)
+        // The prefix is format metadata, not authenticated ciphertext. Carry the
+        // encrypted body unchanged: old, unreferenced cache files may use a
+        // retired key and must not prevent recovery of the live history.
+        let legacyPrefix = Data(legacyEncryptionMarker.utf8)
+        let migrated: Data
+        if stored.starts(with: legacyPrefix) {
+          migrated = Data(HistoryEncryption.marker.utf8) + stored.dropFirst(legacyPrefix.count)
+        } else if HistoryEncryption.isProtected(stored) {
+          migrated = stored
+        } else {
+          migrated = try encryption.protectDataForStorage(stored)
+        }
+        try migrated.write(to: url, options: .atomic)
         try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
       }
     }

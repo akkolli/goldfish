@@ -4,7 +4,9 @@ Goldfish 0.2.0 uses `com.local.goldfish` as its default bundle/defaults identity
 
 ## Upgrade
 
-Quit all older copies before installing. First launch copies the older application folder into a private staging directory, adopts the existing key under the new Keychain service, rewrites encrypted database fields and managed attachment paths, re-encrypts copied sidecars, and checks the database before publishing the new folder. Files use owner-only permissions. Preferences are copied only where Goldfish has no value already.
+Quit all older copies before installing. First launch copies the older application folder into a private staging directory, adopts the existing key under the new Keychain service, rewrites encrypted database fields and managed attachment paths, updates sidecar prefixes without changing encrypted bodies, and checks the database before publishing the new folder. Files use owner-only permissions. Preferences are copied only where Goldfish has no value already.
+
+Older unused cache files can belong to retired keys. Their encrypted bodies are preserved and do not block migration of readable current clips. Migration does not recover a missing retired key.
 
 The original folder and original Keychain item remain unchanged for recovery. A failed migration removes its staging folder and stops startup instead of capturing into a partial profile. A later launch can retry. An existing Goldfish data folder is never overwritten or automatically merged with the older folder. File references outside managed images, thumbnails, and attachments remain external references.
 
