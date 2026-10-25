@@ -69,7 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }, openSettings: { [weak self] in self?.openSettings() }, transferFeedback: { [weak self] in self?.soundService.play($0) })
     panelController.statusItemFrameProvider = { [weak self] in
       guard let button = self?.statusItem?.button, let window = button.window else { return nil }
-      return window.convertToScreen(button.convert(button.bounds, to: nil))
+      // AppKit tracks the entire status-item window, including its edge padding.
+      return window.frame.union(window.convertToScreen(button.convert(button.bounds, to: nil)))
     }
     monitor.onCapturedItem = { [weak self] item in
       self?.panelController.didCaptureItem(item)

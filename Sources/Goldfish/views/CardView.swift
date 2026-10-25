@@ -91,6 +91,7 @@ final class CardView: NSView, NSDraggingSource {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     selectionOutline.frame = bounds
+    layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: verticalHeaderCornerRadius, cornerHeight: verticalHeaderCornerRadius, transform: nil)
     CATransaction.commit()
   }
 

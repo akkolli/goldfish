@@ -314,15 +314,19 @@ final class ShelfController: NSObject, NSWindowDelegate {
 
   private func isPrimaryStatusItemClick(_ event: NSEvent?) -> Bool {
     guard let event else { return false }
+    let location = event.window.map { $0.convertPoint(toScreen: event.locationInWindow) } ?? event.locationInWindow
     return Self.isPrimaryStatusItemClick(
-      eventType: event.type, modifiers: event.modifierFlags, location: NSEvent.mouseLocation, statusItemFrame: statusItemFrameProvider())
+      eventType: event.type, modifiers: event.modifierFlags, location: location, statusItemFrame: statusItemFrameProvider())
   }
 
   static func isPrimaryStatusItemClick(
     eventType: NSEvent.EventType, modifiers: NSEvent.ModifierFlags, location: NSPoint, statusItemFrame: NSRect?
   ) -> Bool {
     guard eventType == .leftMouseDown || eventType == .leftMouseUp, !modifiers.contains(.control), let statusItemFrame else { return false }
-    return statusItemFrame.contains(location)
+    // Include the boundary pixel: AppKit can deliver a status-button action at
+    // the window's max edge, which NSRect.contains excludes.
+    return location.x >= statusItemFrame.minX && location.x <= statusItemFrame.maxX
+      && location.y >= statusItemFrame.minY && location.y <= statusItemFrame.maxY
   }
 
   func windowWillBeginSheet(_ notification: Notification) { panel.hidesOnDeactivate = false }

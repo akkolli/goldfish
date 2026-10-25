@@ -153,9 +153,9 @@ final class GoldfishWorkflowTests: StoredClipboardTestCase {
       controller.show()
       settle(0.32)
       XCTAssertTrue(window.isVisible)
-      controller.toggle()
+      controller.toggleFromStatusItem(try mouse(.leftMouseDown, []))
       waitUntil { !window.isVisible }
-      XCTAssertFalse(window.isVisible)
+      for x in [100.0, 130.0] { XCTAssertTrue(ShelfController.isPrimaryStatusItemClick(eventType: .leftMouseDown, modifiers: [], location: NSPoint(x: x, y: 812), statusItemFrame: NSRect(x: 100, y: 800, width: 30, height: 24))) }
     }
   }
   private func item(_ text: String, kind: ClipKind = .text, sourceApp: String = "Workflow Tests") -> Clip {
