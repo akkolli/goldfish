@@ -235,13 +235,13 @@ struct ClipPresentation {
   func looksInternal(_ value: String) -> Bool {
     let lower = value.lowercased()
     let stem = (value as NSString).lastPathComponent.components(separatedBy: ".").first ?? value
-    return lower.hasPrefix("clipbored-flow-test-") || lower.hasPrefix("internal copy ") || isManagedStoragePath(value)
+    return lower.hasPrefix("goldfish-flow-test-") || lower.hasPrefix("internal copy ") || isManagedStoragePath(value)
       || UUID(uuidString: stem) != nil
   }
 
   private func isManagedStoragePath(_ value: String) -> Bool {
     let normalized = value.replacingOccurrences(of: "%20", with: " ").lowercased()
-    return normalized.contains("/application support/clipbored/") || normalized.contains("/application support/goldfish/")
+    return normalized.contains("/application support/\(GoldfishMigration.legacyDirectoryName.lowercased())/") || normalized.contains("/application support/goldfish/")
   }
 
   func looksGenericLink(_ value: String) -> Bool {

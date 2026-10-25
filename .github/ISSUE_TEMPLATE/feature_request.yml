@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a focused improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the user workflow with synthetic examples.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Privacy, permissions, performance, or compatibility impact
+      description: Optional. Note any tradeoffs you already know about.

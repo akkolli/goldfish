@@ -49,7 +49,7 @@ enum ArchiveError: LocalizedError {
 }
 
 final class HistoryArchive {
-  static let fileExtension = "clipboredarchive"
+  static let fileExtension = "goldfisharchive"
   private static let currentFormatVersion = 1
 
   private let fileManager: FileManager

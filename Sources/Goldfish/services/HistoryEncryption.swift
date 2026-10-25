@@ -11,7 +11,7 @@ import Security
 
 final class HistoryEncryption {
   enum StorageError: Error { case keyUnavailable, encryptionFailed }
-  static let marker = "clipbored:v1:"
+  static let marker = "goldfish:v1:"
   private static let markerData = Data(marker.utf8)
 
   private let keyProvider: () -> SymmetricKey?
@@ -36,6 +36,11 @@ final class HistoryEncryption {
     self.allowsUnencryptedStorage = allowsUnencryptedStorage
   }
 
+  static func migrationEncryption(at directory: URL) throws -> HistoryEncryption {
+    guard let key = ClipboardEncryptionKeychain.shared.adoptLegacyKey(from: directory) else { throw StorageError.keyUnavailable }
+    return HistoryEncryption(keyProvider: { key }, allowsUnencryptedStorage: false)
+  }
+
   var isAvailable: Bool { keyProvider() != nil }
 
   var canPersist: Bool { allowsUnencryptedStorage || isAvailable }
@@ -49,7 +54,7 @@ final class HistoryEncryption {
   func unprotect(_ value: String?) -> String? {
     guard let value else { return nil }
     guard Self.isProtected(value) else { return value }
-    let encoded = String(value.dropFirst(Self.marker.count))
+    let encoded = String(value.dropFirst(Self.protectionPrefix(value)?.count ?? 0))
     guard let data = Data(base64Encoded: encoded), let sealed = try? AES.GCM.SealedBox(combined: data) else { return value }
     guard let key = keyProvider(), let decrypted = try? AES.GCM.open(sealed, using: key) else { return nil }
     return String(data: decrypted, encoding: .utf8)
@@ -69,23 +74,30 @@ final class HistoryEncryption {
 
   func unprotectData(_ data: Data) -> Data? {
     guard Self.isProtected(data) else { return data }
-    let encrypted = data.dropFirst(Self.markerData.count)
+    let encrypted = data.dropFirst(
+      data.starts(with: Self.markerData) ? Self.markerData.count : GoldfishMigration.legacyEncryptionMarker.utf8.count)
     guard let sealed = try? AES.GCM.SealedBox(combined: encrypted), let key = keyProvider(),
       let decrypted = try? AES.GCM.open(sealed, using: key)
     else { return nil }
     return decrypted
   }
 
-  static func isProtected(_ value: String) -> Bool { value.hasPrefix(marker) }
+  private static func protectionPrefix(_ value: String) -> String? {
+    [marker, GoldfishMigration.legacyEncryptionMarker].first { value.hasPrefix($0) }
+  }
 
-  static func isProtected(_ data: Data) -> Bool { data.starts(with: markerData) }
+  static func isProtected(_ value: String) -> Bool { protectionPrefix(value) != nil }
+
+  static func isProtected(_ data: Data) -> Bool {
+    data.starts(with: markerData) || data.starts(with: Data(GoldfishMigration.legacyEncryptionMarker.utf8))
+  }
 
   func resetStoredKey() { resetProvider() }
 
   static func shouldBypassSystemKeychain(
     environment: [String: String] = ProcessInfo.processInfo.environment, arguments: [String] = ProcessInfo.processInfo.arguments
   ) -> Bool {
-    if environment["CLIPBORED_DISABLE_KEYCHAIN"] == "1" || environment["XCTestConfigurationFilePath"] != nil { return true }
+    if environment["GOLDFISH_DISABLE_KEYCHAIN"] == "1" || environment["XCTestConfigurationFilePath"] != nil { return true }
 
     return arguments.contains { argument in argument.contains(".xctest") || argument.hasSuffix("/xctest") }
   }
@@ -102,6 +114,25 @@ final class HistoryEncryption {
 private enum ClipboardEncryptionKeychain { static let shared = KeychainBackedKeyProvider() }
 
 private final class KeychainBackedKeyProvider {
+  private let service: String
+  private let fallbackDirectory: URL?
+
+  init(service: String = "com.local.goldfish.encryption", fallbackDirectory: URL? = nil) {
+    self.service = service
+    self.fallbackDirectory = fallbackDirectory
+  }
+
+  func adoptLegacyKey(from directory: URL) -> SymmetricKey? {
+    queue.sync {
+      let legacy = KeychainBackedKeyProvider(
+        service: GoldfishMigration.legacyBundleIdentifier + ".encryption", fallbackDirectory: directory)
+      guard let data = legacy.readFallbackKeyData() ?? legacy.readKeyData(), let saved = saveKeyData(data), saved == data else {
+        return nil
+      }
+      cachedKey = SymmetricKey(data: data)
+      return cachedKey
+    }
+  }
   private let queue = DispatchQueue(label: "clipboard.encryption-keychain")
   private let keychainTimeout: TimeInterval = 0.35
   private var cachedKey: SymmetricKey?
@@ -175,10 +206,7 @@ private final class KeychainBackedKeyProvider {
   }
 
   private func baseQuery() -> [String: Any] {
-    [
-      kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.local.clipbored.encryption",
-      kSecAttrAccount as String: "history-v1",
-    ]
+    [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "history-v1"]
   }
 
   private func nonInteractiveContext() -> LAContext {
@@ -210,7 +238,7 @@ private final class KeychainBackedKeyProvider {
   private func deleteFallbackKeyData() { try? FileManager.default.removeItem(at: fallbackKeyURL()) }
 
   private func fallbackKeyURL() -> URL {
-    let base = HistoryStore.storageDirectory()
+    let base = fallbackDirectory ?? HistoryStore.storageDirectory()
     return base.appendingPathComponent("history-encryption.key")
   }
 }

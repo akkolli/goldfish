@@ -106,8 +106,8 @@ Use this checklist before a release or after changes to the shelf, pasteboard, s
 
 1. Open the data folder and confirm `history.sqlite`, `images/`, `thumbnails/`, and `attachments/` appear as applicable.
 2. Copy unique text and managed attachment data; confirm `strings` does not expose the test content from the SQLite database or encrypted sidecars.
-3. Treat exported and iCloud `.clipboredarchive` files as sensitive because they are portable and not encrypted by Goldfish. Confirm files over the 128 MB archive limit are rejected cleanly.
-4. Open or reveal encrypted media, quit Goldfish, and confirm temporary preview files under `/tmp/ClipBored/Previews` are removed.
+3. Treat exported and iCloud `.goldfisharchive` files as sensitive because they are portable and not encrypted by Goldfish. Confirm files over the 128 MB archive limit are rejected cleanly.
+4. Open or reveal encrypted media, quit Goldfish, and confirm temporary preview files under `/tmp/Goldfish/Previews` are removed.
 5. Use the explicit full-data reset in Settings > Data and confirm saved rows, full images, managed attachments, temporary previews, and any legacy fallback encryption key are removed when present. Ordinary shelf cleanup preserves pins and Pinboards. Clear the thumbnail cache separately and confirm history and full copied images remain usable.
 6. Enable `Clear history on quit`, relaunch, and confirm history and managed cache/attachment files were removed.
 7. In an isolated test profile, simulate an unavailable encryption key: new captures and archive import must fail closed, never write plaintext, and leave old records untouched. Import must also refuse to proceed when history contains unreadable encrypted records.

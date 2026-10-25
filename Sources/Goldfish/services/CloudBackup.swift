@@ -34,7 +34,7 @@ enum CloudBackupError: LocalizedError, Equatable {
 }
 
 final class CloudBackup: CloudBackupServicing {
-  static let archiveFileName = "ClipBored.\(HistoryArchive.fileExtension)"
+  static let archiveFileName = "Goldfish.\(HistoryArchive.fileExtension)"
 
   private let fileManager: FileManager
   private let containerProvider: () -> URL?
@@ -54,7 +54,14 @@ final class CloudBackup: CloudBackupServicing {
       AppConfig.storageDirectoryName, isDirectory: true)
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-    return directory.appendingPathComponent(Self.archiveFileName)
+    let target = directory.appendingPathComponent(Self.archiveFileName)
+    let legacy = containerURL.appendingPathComponent("Documents").appendingPathComponent(GoldfishMigration.legacyDirectoryName)
+      .appendingPathComponent(GoldfishMigration.legacyDirectoryName + "." + GoldfishMigration.legacyArchiveExtension)
+    if !fileManager.fileExists(atPath: target.path), fileManager.fileExists(atPath: legacy.path) {
+      startDownloadingIfNeeded(legacy)
+      try fileManager.copyItem(at: legacy, to: target)
+    }
+    return target
   }
 
   func status() -> CloudBackupStatus {

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and design discussions
+    url: https://github.com/akkolli/goldfish/discussions
+    about: Ask for help or discuss an idea before opening a pull request.
+  - name: Report a security vulnerability privately
+    url: https://github.com/akkolli/goldfish/security/advisories/new
+    about: Do not disclose vulnerabilities or private clipboard data in public issues.

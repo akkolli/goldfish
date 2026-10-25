@@ -1,7 +1,7 @@
 import AppKit
 
 enum ClipDragPasteboard {
-  static let itemIDType = NSPasteboard.PasteboardType("com.clipbored.clipboard-item-id")
+  static let itemIDType = NSPasteboard.PasteboardType("com.goldfish.clipboard-item-id")
 
 }
 

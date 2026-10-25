@@ -24,7 +24,8 @@ enum ArchivePicker {
   }
 
   static func configure(_ panel: NSSavePanel) {
-    if let type = UTType(filenameExtension: HistoryArchive.fileExtension, conformingTo: .data) { panel.allowedContentTypes = [type] }
+    let extensions = [HistoryArchive.fileExtension] + (panel is NSOpenPanel ? [GoldfishMigration.legacyArchiveExtension] : [])
+    panel.allowedContentTypes = extensions.compactMap { UTType(filenameExtension: $0, conformingTo: .data) }
     panel.isExtensionHidden = false
   }
 

@@ -7,6 +7,8 @@ Start with [developer setup and checks](../CONTRIBUTING.md), then follow the gui
 - [User guide](QUICK_START.md)
 - [Security and data compatibility](SECURITY.md)
 - [Release and installation](RELEASE.md)
+- [Upgrading and recovery](MIGRATION.md)
+- [Changelog](../CHANGELOG.md)
 - [Manual release checks](SMOKE_TEST.md)
 - [Remaining roadmap](ROADMAP.md)
 

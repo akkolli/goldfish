@@ -45,7 +45,7 @@ final class HistoryStoreTests: StoredClipboardTestCase {
   func testImportCannotReplaceUnreadableHistory() throws {
     let writer = makeStore(encryptionService: testEncryption(byte: 7))
     writer.upsert(makeItem("must remain recoverable", displayText: "Private", created: Date()))
-    let archive = directory.appendingPathComponent("backup.clipboredarchive")
+    let archive = directory.appendingPathComponent("backup.goldfisharchive")
     try writer.exportArchive(to: archive)
     let reader = makeStore(encryptionService: testEncryption(byte: 9))
     XCTAssertThrowsError(try reader.exportArchive(to: archive))
@@ -115,7 +115,7 @@ final class HistoryStoreTests: StoredClipboardTestCase {
     store.upsert(image)
     store.upsert(pdf)
 
-    let archiveURL = directory.appendingPathComponent("backup.clipboredarchive")
+    let archiveURL = directory.appendingPathComponent("backup.goldfisharchive")
     let exportSummary = try store.exportArchive(to: archiveURL)
 
     XCTAssertEqual(exportSummary.itemCount, 3)
@@ -209,7 +209,7 @@ final class PersistenceSafetyTests: StoredClipboardTestCase {
     let path = try XCTUnwrap(cache.cacheImageSidecarData(Data("original".utf8), id: UUID()))
     let image = item(path, kind: .image, imagePath: path)
     store.upsert(image)
-    let archive = directory.appendingPathComponent("test.clipboredarchive")
+    let archive = directory.appendingPathComponent("test.goldfisharchive")
     try store.exportArchive(to: archive)
     try editArchive(archive) { json in
       var rows = json["items"] as! [[String: Any]]
@@ -246,8 +246,8 @@ final class PersistenceSafetyTests: StoredClipboardTestCase {
       let image = item(path, kind: .image, imagePath: path)
       XCTAssertFalse(cache.isManagedSidecar(path: path))
       cache.removeCachedReferences(image)
-      let archive = directory.appendingPathComponent("unsafe.clipboredarchive")
-      try HistoryArchive().exportArchive(items: [image], to: archive, cacheService: cache)
+      let archive = directory.appendingPathComponent("unsafe.goldfisharchive")
+      _ = try HistoryArchive().exportArchive(items: [image], to: archive, cacheService: cache)
       let summary = try store.importArchive(from: archive)
       XCTAssertEqual(summary.skippedItemCount, 1)
       XCTAssertTrue(store.items.isEmpty)
@@ -258,7 +258,7 @@ final class PersistenceSafetyTests: StoredClipboardTestCase {
     XCTAssertEqual(cache.data(for: owned), Data("owned".utf8))
     let note = item("valid")
     store.upsert(note)
-    let archive = directory.appendingPathComponent("invalid-count.clipboredarchive")
+    let archive = directory.appendingPathComponent("invalid-count.goldfisharchive")
     for (key, invalid) in [("useCount", Int.max), ("useCount", -1), ("kind", 999)] {
       try store.exportArchive(to: archive)
       try editArchive(archive) { json in

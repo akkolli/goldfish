@@ -10,9 +10,9 @@ enum AppConfig {
     else { return version }
     return "\(version) · \(revision.prefix(8))" + (info["dirty"] as? Bool == true ? " · preview" : "")
   }
-  // Stable on-disk identity preserves history and backups across the rename.
-  static let storageDirectoryName = "ClipBored"
-  static let storageDirectoryOverrideEnvironmentKey = "CLIPBORED_STORAGE_DIR"
+  // New installations use Goldfish identities; GoldfishMigration imports older data.
+  static let storageDirectoryName = "Goldfish"
+  static let storageDirectoryOverrideEnvironmentKey = "GOLDFISH_STORAGE_DIR"
   static let defaultHistoryLength = 300
   static let minHistoryLength = 50
   static let maxHistoryLength = 2000

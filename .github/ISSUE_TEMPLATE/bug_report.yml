@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a reproducible Goldfish problem.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Use synthetic clipboard examples. Never attach history databases, encryption keys, private exports, or secrets. Report vulnerabilities through the Security tab.
+  - type: input
+    id: version
+    attributes:
+      label: Goldfish version or commit
+      description: Copy the version and source revision shown in Settings.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS version and Mac architecture
+      placeholder: macOS 15, Apple Silicon
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the shelf layout and a small, synthetic example.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or diagnostic details
+      description: Optional. Remove private clipboard contents before sharing.

@@ -7,11 +7,11 @@
   <key>CFBundleName</key>
   <string>Goldfish</string>
   <key>CFBundleIdentifier</key>
-  <string>com.local.clipbored</string>
+  <string>com.local.goldfish</string>
   <key>CFBundleVersion</key>
-  <string>2</string>
+  <string>3</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.1</string>
+  <string>0.2.0</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleExecutable</key>

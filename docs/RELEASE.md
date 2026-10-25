@@ -44,7 +44,7 @@ The script rebuilds the app, re-signs it with hardened runtime and timestamping,
 
 ## Bundle Identity And iCloud Backup Entitlements
 
-The default local and release scripts keep the development bundle identifier `com.local.clipbored` and do not add iCloud entitlements. `Back up history to iCloud` reports unavailable in those builds.
+The default local and release scripts keep the development bundle identifier `com.local.goldfish` and do not add iCloud entitlements. `Back up history to iCloud` reports unavailable in those builds.
 
 For a distribution build, supply the release identifier and entitlement file explicitly:
 
@@ -113,6 +113,6 @@ After committing and quitting Goldfish, run `./scripts/install-macos-app.sh`. It
 
 ## Release identity
 
-Before a release, increment `CFBundleShortVersionString` and `CFBundleVersion` in `Sources/Goldfish/resources/Info.plist`. Run `scripts/check.sh`, commit and publish clean main, then tag that verified commit (for example `v0.1.1`). Build through the release script from that checkout and retain its `BuildInfo.json` with the binary and matching source. Settings displays the version and short source revision; dirty previews are labeled. Public distribution still requires the documented signing, notarization, and manual smoke checks.
+Before a release, increment `CFBundleShortVersionString` and `CFBundleVersion` in `Sources/Goldfish/resources/Info.plist`. Run `scripts/check.sh`, commit and publish clean main, then tag that verified commit (for example `v0.2.0`). Build through the release script from that checkout and retain its `BuildInfo.json` with the binary and matching source. Settings displays the version and short source revision; dirty previews are labeled. Public distribution still requires the documented signing, notarization, and manual smoke checks.
 
 Provenance includes every compiler/resource input even when ignored by Git, toolchain and SDK identity, architecture selection, and external entitlement contents. Unpublished target inputs require an explicit development preview. Process inspection failure prevents checks and installation.
